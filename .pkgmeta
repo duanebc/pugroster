@@ -1,0 +1,30 @@
+package-as: PugRater
+
+# The addon lives in a subdirectory of the repo, so hoist it to the package root.
+move-folders:
+    PugRater/PugRater: PugRater
+
+enable-nolib-creation: no
+
+# Ship the hand-written changelog as the release notes rather than a dump of
+# commit messages. Keep CHANGELOG.md current before tagging.
+manual-changelog: CHANGELOG.md
+
+# PugRater embeds no libraries -- pure Blizzard API -- so there are no externals.
+
+ignore:
+    # --- Development-only simulation suite -----------------------------------
+    # The .toc already wraps these in a #@debug@ block, but naming the folder
+    # here means the files are physically absent from a shipped zip rather than
+    # present-but-unloaded.
+    - PugRater/Debug
+
+    # --- Repo files that are not part of the addon ---------------------------
+    - .github
+    - .gitignore
+    - .gitattributes
+    - .pkgmeta
+    - README.md
+    - LICENSE
+    - docs
+    - companion

@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write        # needed to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the packager builds the changelog from history
+
+      - name: Package and release
+        uses: BigWigsMods/packager@v2
+        env:
+          # Provided automatically by Actions.
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          # Add these under Settings -> Secrets and variables -> Actions.
+          # A missing secret just skips that host, so CurseForge can go live
+          # first and the others can be added later.
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}

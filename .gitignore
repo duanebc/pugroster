@@ -1,0 +1,18 @@
+# Generated / local.
+.release/
+*.zip
+__pycache__/
+*.py[cod]
+.venv/
+
+# Secrets. The companion app reads Blizzard API credentials from a local config
+# file; only the example ever gets committed.
+.env
+config.toml
+secrets.json
+
+# Editor and OS noise.
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

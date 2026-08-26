@@ -1,0 +1,381 @@
+-- Capture/RunTracker.lua -- the Mythic+ run lifecycle.
+--
+-- Owns the in-progress run record and is the single writer of ns.db.runs.
+-- The in-progress record lives in SavedVariables (db.activeRun) rather than in a
+-- local, so a /reload in the middle of a key does not lose the run.
+--
+-- Run boundary, per §2 of the plan:
+--   CHALLENGE_MODE_START ........ open a run
+--   CHALLENGE_MODE_COMPLETED .... close it, timed or not
+--   CHALLENGE_MODE_RESET ........ the key was restarted; the old attempt is
+--                                 abandoned
+--   left the instance / group ... abandoned or disbanded
+--
+-- All world-state reads go through the two context helpers at the top, which
+-- give the debug event simulator a guarded seam to feed synthetic runs through
+-- the identical code path.
+
+local ADDON, ns = ...
+
+local RunTracker = {}
+ns.RunTracker = RunTracker
+
+--------------------------------------------------------------------------------
+-- World-state context (the debug seam)
+--------------------------------------------------------------------------------
+
+local function startContext()
+    if ns.Debug and ns.Debug.StartContext then
+        local ctx = ns.Debug.StartContext()
+        if ctx then return ctx end
+    end
+
+    local mapID = C_ChallengeMode and C_ChallengeMode.GetActiveChallengeMapID and C_ChallengeMode.GetActiveChallengeMapID()
+    if not mapID then return nil end
+
+    local level, affixes = C_ChallengeMode.GetActiveKeystoneInfo()
+    local name, _, timeLimit = C_ChallengeMode.GetMapUIInfo(mapID)
+
+    return {
+        mapID    = mapID,
+        dungeon  = name or ("Map " .. tostring(mapID)),
+        keyLevel = level or 0,
+        affixes  = affixes or {},
+        par      = timeLimit,
+        seasonID = ns.Rating.CurrentSeason(),
+        group    = RunTracker.SnapshotGroup(),
+    }
+end
+
+local function completionContext()
+    if ns.Debug and ns.Debug.CompletionContext then
+        local ctx = ns.Debug.CompletionContext()
+        if ctx then return ctx end
+    end
+
+    if not (C_ChallengeMode and C_ChallengeMode.GetCompletionInfo) then return nil end
+    local mapID, level, timeMs, onTime, keystoneUpgradeLevels = C_ChallengeMode.GetCompletionInfo()
+    if not mapID then return nil end
+
+    return {
+        mapID    = mapID,
+        keyLevel = level,
+        elapsed  = timeMs and (timeMs / 1000) or nil,
+        timed    = onTime and true or false,
+        upgrade  = keystoneUpgradeLevels or 0,
+    }
+end
+
+--------------------------------------------------------------------------------
+-- Group snapshot
+--------------------------------------------------------------------------------
+
+-- { [guid] = { name, class, classFile, role, ilvl, spec, specName } } for the
+-- player plus up to four party members.
+function RunTracker.SnapshotGroup()
+    if ns.Debug and ns.Debug.GroupSnapshot then
+        local g = ns.Debug.GroupSnapshot()
+        if g then return g end
+    end
+
+    local out = {}
+    local units = { "player", "party1", "party2", "party3", "party4" }
+    for _, unit in ipairs(units) do
+        if UnitExists(unit) then
+            local guid = UnitGUID(unit)
+            if guid then
+                local name, realm = UnitName(unit)
+                local class, classFile = UnitClass(unit)
+                out[guid] = {
+                    name      = ns.FullName(name, realm),
+                    class     = class,
+                    classFile = classFile,
+                    role      = UnitGroupRolesAssigned(unit),
+                    isPlayer  = (unit == "player") or nil,
+                }
+            end
+        end
+    end
+    return out
+end
+
+local function newObservation(guid, info)
+    return {
+        guid      = guid,
+        name      = info and info.name or "Unknown",
+        class     = info and info.class,
+        classFile = info and info.classFile,
+        role      = info and info.role ~= "NONE" and info.role or nil,
+        spec      = info and info.spec,
+        specName  = info and info.specName,
+        ilvl      = info and info.ilvl,
+        isPlayer  = info and info.isPlayer,
+        deaths = 0, wipes = 0, interrupts = 0, dispels = 0, ccCasts = 0,
+        damage = 0, healing = 0,
+        joinedAt = ns.Now(),
+    }
+end
+
+--------------------------------------------------------------------------------
+-- Lifecycle
+--------------------------------------------------------------------------------
+
+function RunTracker.Active()
+    return ns.db and ns.db.activeRun or nil
+end
+
+function RunTracker.IsActive()
+    return RunTracker.Active() ~= nil
+end
+
+-- Who owned the key. The client does not hand us the slotting player, so this
+-- is an honest best effort: if our own keystone matches the active map, it was
+-- ours; otherwise it stays unknown and the history panel says so.
+local function detectKeyHolder(mapID, level)
+    if not C_MythicPlus then return nil end
+    local ownedMap = C_MythicPlus.GetOwnedKeystoneMapID and C_MythicPlus.GetOwnedKeystoneMapID()
+    local ownedLevel = C_MythicPlus.GetOwnedKeystoneLevel and C_MythicPlus.GetOwnedKeystoneLevel()
+    if ownedMap and ownedMap == mapID and (not level or ownedLevel == level) then
+        return UnitGUID("player")
+    end
+    return nil
+end
+
+function RunTracker.StartRun(ctx)
+    ctx = ctx or startContext()
+    if not ctx then return nil end
+
+    -- A start while one is already open means the previous attempt never closed.
+    if RunTracker.Active() then
+        RunTracker.Abandon("restarted")
+    end
+
+    local db = ns.db
+    local run = {
+        id        = db.nextRunId,
+        mapID     = ctx.mapID,
+        dungeon   = ctx.dungeon,
+        keyLevel  = ctx.keyLevel or 0,
+        affixes   = ctx.affixes or {},
+        seasonID  = ctx.seasonID or ns.Rating.CurrentSeason(),
+        startedAt = ctx.startedAt or ns.Now(),
+        par       = ctx.par,
+        keyHolder = ctx.keyHolder or detectKeyHolder(ctx.mapID, ctx.keyLevel),
+        origin    = "self",   -- future shared-pool imports carry a different origin
+        exported  = false,
+        debug     = ctx.debug or nil,
+        observations = {},
+        chat      = {},
+        wipes     = 0,
+    }
+    db.nextRunId = db.nextRunId + 1
+    -- Remember the season we last saw a key in, so rating decay still works on
+    -- a login where C_MythicPlus has not populated yet.
+    if run.seasonID and run.seasonID > 0 then db.lastKnownSeason = run.seasonID end
+
+    for guid, info in pairs(ctx.group or {}) do
+        run.observations[guid] = newObservation(guid, info)
+        ns.Roster.TouchCharacter(guid, {
+            name = info.name, class = info.class, classFile = info.classFile,
+            role = info.role, spec = info.spec, specName = info.specName,
+            ilvl = info.ilvl, debug = ctx.debug or nil,
+        })
+    end
+
+    db.activeRun = run
+    ns.CombatLog.ResetWindow()
+
+    if not ctx.debug then
+        ns.Inspect.Start()
+        ns.Inspect.QueueGroup()
+    end
+
+    ns.Print(string.format("tracking %s +%d.", run.dungeon or "?", run.keyLevel or 0))
+    if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+    return run
+end
+
+-- Merge late-arriving detail (an inspect result) into the open run.
+function RunTracker.UpdateObservation(guid, info)
+    local run = RunTracker.Active()
+    if not run or not guid or not info then return end
+    local obs = run.observations[guid]
+    if not obs then return end
+    for _, key in ipairs({ "name", "class", "classFile", "role", "spec", "specName", "ilvl" }) do
+        if info[key] ~= nil and info[key] ~= "NONE" then obs[key] = info[key] end
+    end
+end
+
+-- Close the run out and file it. `result` carries whatever the caller knows:
+-- completed/timed/upgrade/elapsed, or the abandon reason.
+function RunTracker.Finalize(run, result)
+    run = run or RunTracker.Active()
+    if not run then return nil end
+    result = result or {}
+
+    run.endedAt   = ns.Now()
+    run.completed = result.completed and true or false
+    run.timed     = result.timed and true or false
+    run.upgrade   = result.upgrade or 0
+    run.abandoned = result.abandoned and true or false
+    run.disband   = result.disband and true or false
+    run.reason    = result.reason
+
+    run.elapsed = result.elapsed or (run.endedAt - (run.startedAt or run.endedAt))
+    if run.par and run.par > 0 then
+        run.margin = run.par - run.elapsed  -- positive = finished under par
+    end
+
+    run._wipeCounted = nil
+
+    if not run.debug and ns.settings.useDetails then
+        pcall(ns.DetailsBridge.Enrich, run)
+    end
+
+    ns.db.activeRun = nil
+    ns.Inspect.Stop()
+
+    table.insert(ns.db.runs, run)
+    RunTracker.TrimHistory()
+
+    for guid, obs in pairs(run.observations) do
+        ns.Roster.TouchCharacter(guid, {
+            name = obs.name, class = obs.class, classFile = obs.classFile,
+            role = obs.role, spec = obs.spec, specName = obs.specName,
+            ilvl = obs.ilvl, debug = run.debug,
+        })
+    end
+
+    ns.Rating.RecomputeAll()
+
+    local summary
+    if run.completed then
+        summary = run.timed and string.format("timed +%d", run.upgrade) or "over time"
+    else
+        summary = run.disband and "disbanded" or "abandoned"
+    end
+    ns.Print(string.format("recorded %s +%d (%s).", run.dungeon or "?", run.keyLevel or 0, summary))
+
+    if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+    return run
+end
+
+function RunTracker.Abandon(reason)
+    local run = RunTracker.Active()
+    if not run then return end
+
+    -- If everyone but us is already gone, this was a disband rather than us
+    -- walking out on the group -- the rating model treats them differently.
+    local others, present = 0, 0
+    local me = UnitGUID("player")
+    for guid, obs in pairs(run.observations) do
+        if guid ~= me then
+            others = others + 1
+            if not obs.leftEarly then present = present + 1 end
+        end
+    end
+    local disband = others > 0 and present <= 1
+
+    return RunTracker.Finalize(run, {
+        completed = false,
+        abandoned = true,
+        disband   = disband,
+        reason    = reason,
+    })
+end
+
+function RunTracker.TrimHistory()
+    local max = ns.settings.maxRunsInGame or 400
+    local runs = ns.db.runs
+    -- Never drop a run the companion has not seen yet: the in-game store is a
+    -- capture buffer, and losing an unexported run loses it for good.
+    while #runs > max do
+        local oldest = runs[1]
+        if not oldest or not oldest.exported then break end
+        table.remove(runs, 1)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Roster churn
+--------------------------------------------------------------------------------
+
+local function onRosterUpdate()
+    local run = RunTracker.Active()
+    if not run then
+        if ns.JoinPopup then ns.JoinPopup.OnRosterUpdate() end
+        return
+    end
+
+    local current = RunTracker.SnapshotGroup()
+
+    -- Anyone in the run record who is no longer in the group left early.
+    for guid, obs in pairs(run.observations) do
+        if not current[guid] and not obs.leftEarly then
+            obs.leftEarly = true
+            obs.leftAt = ns.Now()
+            ns.Print(ns.ShortName(obs.name), "left the group mid-run.")
+        end
+    end
+
+    -- Backfills are rare but legal (a replacement invited after a death).
+    for guid, info in pairs(current) do
+        if not run.observations[guid] then
+            run.observations[guid] = newObservation(guid, info)
+            run.observations[guid].joinedLate = true
+            ns.Roster.TouchCharacter(guid, info)
+            ns.Inspect.Queue(guid)
+        end
+    end
+
+    if ns.JoinPopup then ns.JoinPopup.OnRosterUpdate() end
+end
+
+--------------------------------------------------------------------------------
+-- Recovery after /reload or zoning out
+--------------------------------------------------------------------------------
+
+local function verifyStillRunning()
+    local run = RunTracker.Active()
+    if not run or run.debug then return end
+
+    local active = C_ChallengeMode and C_ChallengeMode.GetActiveChallengeMapID and C_ChallengeMode.GetActiveChallengeMapID()
+    if active then
+        -- Still in the key: a /reload happened. Pick the inspect queue back up.
+        ns.Inspect.Start()
+        ns.Inspect.QueueGroup()
+        return
+    end
+
+    RunTracker.Abandon("left the instance")
+end
+
+ns.OnInit(function()
+    ns.RegisterEvent("CHALLENGE_MODE_START", function() RunTracker.StartRun() end)
+
+    ns.RegisterEvent("CHALLENGE_MODE_COMPLETED", function()
+        local run = RunTracker.Active()
+        if not run then return end
+        local ctx = completionContext() or {}
+        RunTracker.Finalize(run, {
+            completed = true,
+            timed     = ctx.timed,
+            upgrade   = ctx.upgrade,
+            elapsed   = ctx.elapsed,
+        })
+    end)
+
+    ns.RegisterEvent("CHALLENGE_MODE_RESET", function()
+        if RunTracker.IsActive() then RunTracker.Abandon("key reset") end
+    end)
+
+    ns.RegisterEvent("GROUP_ROSTER_UPDATE", onRosterUpdate)
+
+    ns.RegisterEvent("PLAYER_ENTERING_WORLD", function()
+        if RunTracker.IsActive() then
+            -- Zone transitions settle a few seconds after the event fires, so
+            -- do not judge an in-progress run on the instant it arrives.
+            C_Timer.After(6, verifyStillRunning)
+        end
+    end)
+end)

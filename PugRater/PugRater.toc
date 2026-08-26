@@ -1,0 +1,58 @@
+## Interface: 120007
+## Title: PugRater
+## Notes: Rate the players you run Mythic+ with, organise them into a tagged roster, and message them by tag
+## Author: Duane
+## Version: @project-version@
+## SavedVariables: PugRaterDB
+## X-License: MIT
+## X-Category: Group Finder
+## X-Website: https://github.com/duanebc/PugRater
+
+# The packager reads these to know where to upload; a missing one just skips
+# that host. Two hashes = a real TOC directive, one = an inert comment.
+# X-Curse-Project-ID: 000000
+# X-Wago-ID: 000000
+# X-WoWI-ID: 00000
+
+Core.lua
+
+# Rating first: everything downstream asks it for tiers and season constants.
+Rating\Provisional.lua
+Rating\Lookup.lua
+
+Roster\Model.lua
+Roster\Filters.lua
+
+Capture\DetailsBridge.lua
+Capture\Inspect.lua
+Capture\CombatLog.lua
+Capture\ChatLog.lua
+Capture\RunTracker.lua
+
+Messaging\Templates.lua
+Messaging\Sender.lua
+Messaging\Replies.lua
+
+UI\Window.lua
+UI\RosterPanel.lua
+UI\HistoryPanel.lua
+UI\SendPanel.lua
+UI\Options.lua
+UI\Tooltip.lua
+UI\JoinPopup.lua
+UI\LFGBadge.lua
+
+# Companion-generated enrichment. The checked-in stub is an empty table, so the
+# addon behaves identically whether or not the Python side has ever run.
+PugRater_Lookup.lua
+
+#@debug@
+# Development-only simulation suite. The packager strips this block and .pkgmeta
+# ignores the folder, so released builds contain no debug code at all.
+Debug\DebugFlag.lua
+Debug\DebugCore.lua
+Debug\FakeRun.lua
+Debug\EventSim.lua
+Debug\FakeRoster.lua
+Debug\EchoSender.lua
+#@end-debug@

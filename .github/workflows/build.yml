@@ -1,0 +1,50 @@
+name: Build
+
+# Packages on every push/PR without uploading anywhere, so a broken .toc or
+# .pkgmeta is caught before a tag goes out. The zip is kept as an artifact.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Package (no upload)
+        uses: BigWigsMods/packager@v2
+        with:
+          # -d skips every upload; -l skips @localization@ keyword replacement,
+          # which would otherwise want a CurseForge token just to build.
+          args: -d -l
+
+      # On a branch push where HEAD already carries a tag, the packager exits
+      # without building ("Found future tag, not packaging") so the Release
+      # workflow can build that commit instead. There is legitimately no zip in
+      # that case, and failing the job over it just emails a false alarm every
+      # time a tag follows its commit.
+      - name: Look for a package
+        id: pkg
+        shell: bash
+        run: |
+          if compgen -G ".release/*.zip" > /dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No package built - this commit is tagged, so the Release workflow builds it."
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: steps.pkg.outputs.found == 'true'
+        with:
+          name: PugRater-build
+          path: .release/*.zip
+          # The packager writes the zip into .release/, and upload-artifact has
+          # skipped anything under a dot-directory since v4.4 unless asked not to.
+          include-hidden-files: true
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+# Normalise to LF in the repo. The packager runs on Linux; CRLF in .toc files
+# has bitten WoW addon builds before.
+* text=auto eol=lf
+*.png binary
+*.zip binary
+# Shipped texture. Normalised as text it would be CRLF-mangled into a corrupt
+# file inside the packaged zip while still working from a local checkout.
+*.tga binary
