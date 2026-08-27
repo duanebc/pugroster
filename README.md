@@ -1,3 +1,5 @@
+<img src="images/pugrater/pugrater-logo-400.png" alt="" width="128" align="right">
+
 # PugRater
 
 Records every Mythic+ run you do, rates the players you ran with, organises them

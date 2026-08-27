@@ -27,4 +27,5 @@ ignore:
     - README.md
     - LICENSE
     - docs
+    - images
     - companion
