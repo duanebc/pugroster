@@ -257,7 +257,7 @@ function Rating.RecomputeAll()
     local touched = 0
 
     for guid, agg in pairs(aggs) do
-        local char = ns.Roster.TouchCharacter(guid, {})
+        local char = ns.Roster.EnsureCharacter(guid)
         if char then
             char.runs     = agg.runs
             char.score    = ns.Round(agg.score, 3)
@@ -267,7 +267,11 @@ function Rating.RecomputeAll()
                 cc = agg.cc, timed = agg.timed, abandoned = agg.abandoned,
                 leftEarly = agg.leftEarly, bestKey = agg.bestKey,
             }
-            if agg.lastSeen and agg.lastSeen > (char.lastSeen or 0) then
+            -- Trust the runs over the stored value. Existing databases carry a
+            -- lastSeen that the old rating pass flattened to "now" on every
+            -- recompute, so raising-only would preserve the wrong number for
+            -- good; the newest run a character appears in is the honest answer.
+            if agg.lastSeen and agg.lastSeen > 0 then
                 char.lastSeen = agg.lastSeen
             end
             touched = touched + 1

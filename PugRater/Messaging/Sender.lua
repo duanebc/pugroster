@@ -7,7 +7,7 @@
 -- Guardrails, all enforced here rather than in the UI so a manual send from the
 -- roster panel obeys them too:
 --   * the do-not-message tag blocks outright,
---   * a per-person cooldown blocks re-messaging within N hours,
+--   * a per-person cooldown blocks re-messaging within N seconds,
 --   * offline people are not recipients (by design -- whispers need a target),
 --   * in debug builds the whole send path is swapped for a local echo.
 
@@ -22,7 +22,7 @@ ns.Sender = Sender
 
 function Sender.CooldownRemaining(person)
     if not person or not person.lastMessaged then return 0 end
-    local window = (ns.settings.messageCooldownHours or 12) * 3600
+    local window = ns.settings.messageCooldownSeconds or 300
     local remaining = (person.lastMessaged + window) - ns.Now()
     return remaining > 0 and remaining or 0
 end
@@ -30,12 +30,31 @@ end
 -- Returns blockedReason or nil.
 function Sender.BlockReason(person)
     if not person then return "unknown person" end
+    -- Seeded people are not real characters. Echo mode is the sandbox where
+    -- messaging them is the whole point; anywhere else, refuse -- whispering or
+    -- inviting a name that does not exist is the failure mode the flag exists
+    -- to prevent. A release build has no way to create these, so this only ever
+    -- fires on leftovers from a dev database.
+    if person.debug and not (ns.Debug and ns.Debug.EchoSend) then
+        return "simulated (test data)"
+    end
     if ns.Roster.IsDoNotMessage(person) then return "do-not-message" end
     local cd = Sender.CooldownRemaining(person)
     if cd > 0 then
-        return string.format("messaged %s ago", ns.TimeAgo(person.lastMessaged))
+        -- Time remaining is the actionable half: "messaged 4m ago" alone reads
+        -- like a note when it is actually a 12-hour lockout.
+        return string.format("messaged %s, %s left",
+            ns.TimeAgo(person.lastMessaged), ns.Span(cd))
     end
     return nil
+end
+
+-- Forget that we ever messaged someone. The cooldown is a courtesy guard, not a
+-- rule, and the whole point of a guard is that you can lift it deliberately.
+function Sender.ClearCooldown(person)
+    if not person or not person.lastMessaged then return false end
+    person.lastMessaged = nil
+    return true
 end
 
 --------------------------------------------------------------------------------
@@ -60,7 +79,10 @@ function Sender.BuildRecipients(filter, templateText)
             character = char,
             online    = match.online,
             blocked   = blocked,
-            selected  = blocked == nil,
+            -- Nothing is selected by default. A send goes to real people, so
+            -- the safe starting point is an empty selection you add to, not a
+            -- full one you have to remember to trim.
+            selected  = false,
             message   = ns.Templates.Expand(templateText or "",
                             ns.Templates.RecipientContext(person, char), senderCtx),
         }
@@ -103,6 +125,10 @@ end
 -- Sent log
 --------------------------------------------------------------------------------
 
+local function echoingNow()
+    return ns.Debug and ns.Debug.EchoSend and true or false
+end
+
 local function recordSend(entry, channel, target, text)
     local person = entry.person
     person.lastMessaged = ns.Now()
@@ -116,13 +142,26 @@ local function recordSend(entry, channel, target, text)
         channel   = channel,
         target    = tostring(target),
         text      = text,
+        -- Test data, either because the recipient is seeded or because the send
+        -- was echoed rather than actually sent. Either way the companion must
+        -- not import it.
+        debug     = (person.debug or (ns.Debug and ns.Debug.EchoSend)) and true or nil,
     }
 
     table.insert(person.sentLog, record)
     table.insert(ns.db.sentLog, record)
 
-    -- The global log is a convenience view; keep it bounded.
-    while #ns.db.sentLog > 500 do table.remove(ns.db.sentLog, 1) end
+    -- Notify with a clickable name. A send from the Send tab otherwise leaves no
+    -- trace in chat, and the moment you most want to whisper someone is right
+    -- after you have just messaged them.
+    ns.Print("messaged", ns.PlayerLink(record.name),
+        echoingNow() and "|cffd9a441(echo -- not really sent)|r" or "")
+
+    -- Both logs are a convenience view of what you just did, not an archive, so
+    -- they are bounded by the same setting rather than a hardcoded 500.
+    local keep = math.max(1, tonumber(ns.settings.maxSentLog) or 20)
+    while #ns.db.sentLog > keep do table.remove(ns.db.sentLog, 1) end
+    while #person.sentLog > keep do table.remove(person.sentLog, 1) end
 end
 
 function Sender.SentLog(person)

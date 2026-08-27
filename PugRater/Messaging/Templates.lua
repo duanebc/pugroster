@@ -63,15 +63,15 @@ function Templates.SenderContext()
         key        = "",
     }
 
-    if C_MythicPlus and C_MythicPlus.GetOwnedKeystoneMapID then
-        local mapID = C_MythicPlus.GetOwnedKeystoneMapID()
-        local level = C_MythicPlus.GetOwnedKeystoneLevel and C_MythicPlus.GetOwnedKeystoneLevel()
-        if mapID then
-            local name = C_ChallengeMode and C_ChallengeMode.GetMapUIInfo and C_ChallengeMode.GetMapUIInfo(mapID)
-            ctx.dungeon = name or ("map " .. mapID)
-            ctx.mykeylevel = level and ("+" .. level) or ""
-            ctx.key = string.format("%s %s", ctx.mykeylevel, ctx.dungeon):gsub("^%s+", "")
-        end
+    local mapID, level = ns.OwnedKeystone()
+    if mapID then
+        -- An unnamed dungeon stays empty rather than becoming "map 2859": Expand
+        -- leaves empty values as a visible {dungeon} in the preview, which is
+        -- what we want a raw ID to look like -- not something we whisper at a
+        -- real person.
+        ctx.dungeon    = ns.DungeonName(mapID) or ""
+        ctx.mykeylevel = level and ("+" .. level) or ""
+        ctx.key        = (ctx.mykeylevel .. " " .. ctx.dungeon):match("^%s*(.-)%s*$")
     end
 
     return ctx

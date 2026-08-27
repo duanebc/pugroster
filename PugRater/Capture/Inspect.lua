@@ -14,7 +14,7 @@ local INTERVAL = 2.0     -- seconds between inspect requests
 local RETRY_AFTER = 8.0  -- give up on a pending request after this long
 
 local queue, queued = {}, {}
-local pending, pendingSince
+local pending, pendingSince, pendingUnit
 local ticker
 
 local function unitForGUID(guid)
@@ -27,6 +27,7 @@ local function unitForGUID(guid)
 end
 
 function Inspect.Queue(guid)
+    guid = ns.SafeGUID(guid)
     if not guid or queued[guid] then return end
     if not ns.settings.inspectGroupmates then return end
     queued[guid] = true
@@ -91,7 +92,7 @@ end
 local function drain()
     if pending then
         if GetTime() - pendingSince < RETRY_AFTER then return end
-        pending = nil  -- request went unanswered; move on
+        pending, pendingUnit = nil, nil  -- went unanswered; move on
     end
 
     local guid = table.remove(queue, 1)
@@ -99,6 +100,7 @@ local function drain()
     queued[guid] = nil
 
     local unit = unitForGUID(guid)
+    ns.Trace("inspect:range")
     if not unit or not CanInspect(unit) or not CheckInteractDistance(unit, 1) then
         -- Out of range or not inspectable right now. Re-queue once at the back
         -- so a groupmate who was across the room gets picked up later.
@@ -109,7 +111,11 @@ local function drain()
         return
     end
 
-    pending, pendingSince = guid, GetTime()
+    -- The unit is remembered, not just the GUID: INSPECT_READY answers with a
+    -- secret GUID on Midnight, so the reply cannot be matched back by identity.
+    -- One request is ever in flight, so "the unit we asked about" is enough.
+    pending, pendingSince, pendingUnit = guid, GetTime(), unit
+    ns.Trace("inspect:notify")
     NotifyInspect(unit)
 end
 
@@ -120,16 +126,48 @@ end
 
 function Inspect.Stop()
     if ticker then ticker:Cancel(); ticker = nil end
-    pending = nil
+    pending, pendingUnit = nil, nil
     wipe(queue)
     wipe(queued)
 end
 
 ns.OnInit(function()
-    ns.RegisterEvent("INSPECT_READY", function(guid)
-        if guid and guid == pending then pending = nil end
-        local unit = unitForGUID(guid)
-        if unit then Inspect.Capture(guid, unit) end
+    -- The event's GUID is deliberately ignored.
+    --
+    -- Midnight answers INSPECT_READY with a *secret* GUID, and a secret cannot be
+    -- compared -- so `guid == pending` never matched, the request never resolved,
+    -- and every inspect timed out in silence. That is why no groupmate ever had
+    -- an item level. Details hits the same wall and simply gives up on a secret
+    -- GUID, which is why its item level column reads zero.
+    --
+    -- We do not need the identity: exactly one request is in flight, and drain()
+    -- recorded which unit it asked about.
+    ns.RegisterEvent("INSPECT_READY", function()
+        local guid, unit = pending, pendingUnit
+        pending, pendingUnit = nil, nil
+
+        if guid and unit and UnitExists(unit) then
+            Inspect.Capture(guid, unit)
+        end
         if ClearInspectPlayer then ClearInspectPlayer() end
+    end)
+
+    -- The queue used to run only while a key was in progress, so a party
+    -- member's item level was unavailable anywhere else -- including on the
+    -- tooltip, which is where you actually want it.
+    ns.RegisterEvent("GROUP_ROSTER_UPDATE", function()
+        if IsInGroup() then
+            Inspect.Start()
+            Inspect.QueueGroup()
+        elseif not ns.RunTracker.IsActive() then
+            Inspect.Stop()
+        end
+    end)
+
+    ns.RegisterEvent("PLAYER_ENTERING_WORLD", function()
+        if IsInGroup() then
+            Inspect.Start()
+            Inspect.QueueGroup()
+        end
     end)
 end)

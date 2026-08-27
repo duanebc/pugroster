@@ -151,6 +151,35 @@ function CombatLog.ResetWindow()
     wipe(recentDeaths)
 end
 
-ns.OnInit(function()
-    ns.RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED", onCombatLogEvent)
-end)
+-- Open risk 1, arrived.
+--
+-- Midnight (interface 120000+, the pass that restricted a swathe of addon APIs)
+-- makes COMBAT_LOG_EVENT_UNFILTERED off limits: registering it is a protected
+-- action, the client refuses it, and that refusal is the "PugRater has been
+-- blocked from an action only available to the Blizzard UI" popup, once per
+-- login. A blocked action is not a Lua error, so there is nothing to pcall and
+-- no way to recover after the fact -- the only fix is not to make the call.
+-- Details guards its own parser registration on the same build check.
+--
+-- So this degrades rather than erroring, which is what the plan called for:
+-- deaths, interrupts, dispels and CC come back zero, DetailsBridge stays the
+-- damage and healing source, and Rating treats every per-player stat as a
+-- relative adjustment on top of outcome -- an all-zero run still scores, on
+-- outcome alone. Options reports which of the two is in effect.
+-- An unreadable build falls on the restricted side. Losing the tallies is a
+-- degraded run record; guessing wrong the other way is a popup on every login,
+-- and the TOC targets Midnight anyway.
+local _, _, _, interfaceVersion = GetBuildInfo()
+interfaceVersion = tonumber(interfaceVersion)
+CombatLog.available = interfaceVersion ~= nil and interfaceVersion < 120000
+
+if CombatLog.available then
+    -- Its own frame, registered at load rather than through ns.RegisterEvent:
+    -- routing thousands of combat events per pull through ns.FireEvent would put
+    -- a breadcrumb in ns.Trace for every one and swamp the ring. pcall matches
+    -- what FireEvent does for every other handler -- an error in here must never
+    -- spam mid-pull.
+    local eventFrame = CreateFrame("Frame")
+    eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    eventFrame:SetScript("OnEvent", function() pcall(onCombatLogEvent) end)
+end

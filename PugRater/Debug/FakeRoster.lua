@@ -95,6 +95,14 @@ function FakeRoster.Seed(count)
         },
     })
 
+    -- Saved groups are plain config rather than roster records, so they carry no
+    -- debug flag of their own until we put one on: without it `wipe fake` leaves
+    -- three invented groups behind on a database that is meant to be clean.
+    for _, name in ipairs({ "High Key Roster", "Healers I trust", "Weeknight crew" }) do
+        local group = ns.db.savedGroups[name]
+        if group then group.debug = true end
+    end
+
     ns.Rating.RecomputeAll()
     ns.Debug.Print(string.format("seeded %d people, %d tags, %d links and 3 saved groups.",
         math.min(count, #poolChars), tagged, linked))

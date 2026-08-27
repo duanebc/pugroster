@@ -37,6 +37,18 @@ function UI.Backdrop(frame, color)
     return tex
 end
 
+-- Section header: an accent-coloured caption, either at the top of a column or
+-- spaced below whatever came before it.
+function UI.Section(parent, anchor, text, dx)
+    local fs = UI.Label(parent, text, 12, UI.COLORS.accent)
+    if anchor then
+        fs:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", dx or 0, -14)
+    else
+        fs:SetPoint("TOPLEFT", 14, -12)
+    end
+    return fs
+end
+
 function UI.Label(parent, text, size, color)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     fs:SetFont(STANDARD_TEXT_FONT, size or 12, "")
@@ -61,8 +73,14 @@ function UI.Button(parent, text, width, onClick)
     label:SetText(text or "")
     b.label = label
 
-    b:SetScript("OnEnter", function(self) self.bg:SetColorTexture(0.30, 0.24, 0.42, 0.95) end)
+    -- Hover repaints the background, so both handlers have to respect the
+    -- disabled state or a mouseover would undo the dim.
+    b:SetScript("OnEnter", function(self)
+        if not self:IsEnabled() then return end
+        self.bg:SetColorTexture(0.30, 0.24, 0.42, 0.95)
+    end)
     b:SetScript("OnLeave", function(self)
+        if not self:IsEnabled() then return end
         self.bg:SetColorTexture(self.isActive and 0.34 or 0.18, self.isActive and 0.26 or 0.16,
                                 self.isActive and 0.48 or 0.24, 0.9)
     end)
@@ -71,6 +89,15 @@ function UI.Button(parent, text, width, onClick)
     function b:SetActive(active)
         self.isActive = active
         self.bg:SetColorTexture(active and 0.34 or 0.18, active and 0.26 or 0.16, active and 0.48 or 0.24, 0.9)
+    end
+
+    -- Native Enable/Disable stops the click; the alpha is what makes it look
+    -- stopped. Both halves matter -- a button that still looks live but does
+    -- nothing is worse than one that looks dead.
+    function b:SetEnabled(on)
+        if on then self:Enable() else self:Disable() end
+        self.label:SetAlpha(on and 1 or 0.35)
+        self.bg:SetAlpha(on and 1 or 0.45)
     end
 
     function b:SetText(t) self.label:SetText(t) end
@@ -213,6 +240,35 @@ function UI.MenuButton(parent, width, getLabel, buildEntries)
     end)
     b.Refresh = function(self) if getLabel then self:SetText(getLabel()) end end
     return b
+end
+
+-- A horizontal scrollbar for content that is too wide rather than too tall.
+--
+-- The scroll lists handle vertical overflow; nothing handled horizontal, so a
+-- long line simply drew past the edge of the window. `range` is how far there is
+-- to scroll, and setting it to zero hides the bar -- a control for something that
+-- fits is worse than none.
+function UI.HScrollBar(parent, onChange)
+    local bar = CreateFrame("Slider", nil, parent, "UISliderTemplate")
+    bar:SetOrientation("HORIZONTAL")
+    bar:SetHeight(12)
+    bar:SetMinMaxValues(0, 0)
+    bar:SetValueStep(8)
+    bar:SetObeyStepOnDrag(true)
+    bar:SetValue(0)
+    bar:SetScript("OnValueChanged", function(self, value)
+        if onChange then onChange(math.floor(value + 0.5)) end
+    end)
+
+    function bar:SetRange(range)
+        range = math.max(0, math.floor(range or 0))
+        self:SetMinMaxValues(0, range)
+        if self:GetValue() > range then self:SetValue(range) end
+        self:SetShown(range > 0)
+    end
+
+    bar:SetRange(0)
+    return bar
 end
 
 --------------------------------------------------------------------------------
@@ -380,7 +436,9 @@ local function buildWindow()
     if frame then return frame end
 
     frame = CreateFrame("Frame", "PugRaterFrame", UIParent)
-    frame:SetSize(920, 580)
+    -- 1000 rather than 920: the roster shows Name-Realm, and a realm name needs
+    -- the room. Clamped to screen, so a small display still gets a usable frame.
+    frame:SetSize(1000, 580)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("HIGH")
     frame:SetMovable(true)
@@ -390,7 +448,28 @@ local function buildWindow()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:SetClampedToScreen(true)
     UI.Backdrop(frame, COLORS.bg)
-    tinsert(UISpecialFrames, "PugRaterFrame")
+
+    -- ESC-to-close, handled here rather than through UISpecialFrames. Putting
+    -- our frame name in that table hands an addon-owned string to
+    -- CloseSpecialWindows(), which Blizzard calls from the game-menu path; the
+    -- taint then travels with whatever the menu does next. Owning the keypress
+    -- keeps all of it on our side.
+    frame:EnableKeyboard(true)
+    frame:SetPropagateKeyboardInput(true)
+    frame:SetScript("OnKeyDown", function(self, key)
+        -- SetPropagateKeyboardInput is refused in combat, so in combat we leave
+        -- propagation alone and simply do not swallow the key.
+        if InCombatLockdown() then return end
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            self:Hide()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+    frame:HookScript("OnShow", function(self)
+        if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
+    end)
 
     local title = UI.Label(frame, "PugRater", 15, COLORS.accent)
     title:SetPoint("TOPLEFT", UI.PAD, -10)

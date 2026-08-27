@@ -53,8 +53,26 @@ local function completionContext()
         if ctx then return ctx end
     end
 
-    if not (C_ChallengeMode and C_ChallengeMode.GetCompletionInfo) then return nil end
-    local mapID, level, timeMs, onTime, keystoneUpgradeLevels = C_ChallengeMode.GetCompletionInfo()
+    if not C_ChallengeMode then return nil end
+
+    -- GetChallengeCompletionInfo returns one table and is what the client
+    -- answers now; GetCompletionInfo is the deprecated positional form. It still
+    -- returns the map, level and time, but onTime and keystoneUpgradeLevels come
+    -- back empty -- which is how a +2 got filed as "over time" with the elapsed
+    -- and par both correct beside it. Feature-detect, newest first.
+    local mapID, level, timeMs, onTime, upgradeLevels
+
+    if C_ChallengeMode.GetChallengeCompletionInfo then
+        local info = C_ChallengeMode.GetChallengeCompletionInfo()
+        if not info then return nil end
+        mapID, level, timeMs = info.mapChallengeModeID, info.level, info.time
+        onTime, upgradeLevels = info.onTime, info.keystoneUpgradeLevels
+    elseif C_ChallengeMode.GetCompletionInfo then
+        mapID, level, timeMs, onTime, upgradeLevels = C_ChallengeMode.GetCompletionInfo()
+    else
+        return nil
+    end
+
     if not mapID then return nil end
 
     return {
@@ -62,7 +80,7 @@ local function completionContext()
         keyLevel = level,
         elapsed  = timeMs and (timeMs / 1000) or nil,
         timed    = onTime and true or false,
-        upgrade  = keystoneUpgradeLevels or 0,
+        upgrade  = upgradeLevels or 0,
     }
 end
 
@@ -132,9 +150,9 @@ end
 -- is an honest best effort: if our own keystone matches the active map, it was
 -- ours; otherwise it stays unknown and the history panel says so.
 local function detectKeyHolder(mapID, level)
-    if not C_MythicPlus then return nil end
-    local ownedMap = C_MythicPlus.GetOwnedKeystoneMapID and C_MythicPlus.GetOwnedKeystoneMapID()
-    local ownedLevel = C_MythicPlus.GetOwnedKeystoneLevel and C_MythicPlus.GetOwnedKeystoneLevel()
+    -- Both sides of this comparison have to be challenge map IDs; ns.OwnedKeystone
+    -- is what guarantees that.
+    local ownedMap, ownedLevel = ns.OwnedKeystone()
     if ownedMap and ownedMap == mapID and (not level or ownedLevel == level) then
         return UnitGUID("player")
     end
@@ -208,6 +226,39 @@ end
 
 -- Close the run out and file it. `result` carries whatever the caller knows:
 -- completed/timed/upgrade/elapsed, or the abandon reason.
+-- Standard Mythic+ upgrade thresholds: inside the par time is +1, inside 80% of
+-- it is +2, inside 60% is +3.
+local function upgradeForTime(elapsed, par)
+    if not elapsed or not par or par <= 0 or elapsed > par then return 0 end
+    if elapsed <= par * 0.6 then return 3 end
+    if elapsed <= par * 0.8 then return 2 end
+    return 1
+end
+
+-- Repair runs filed while the deprecated completion API was returning no onTime
+-- and no upgrade level: a key completed comfortably inside par was stored as
+-- "over time". Finishing inside par *is* the definition of timed, so anything
+-- completed with time to spare gets corrected.
+--
+-- The upgrade level is derived from the thresholds rather than known, and our
+-- elapsed can differ from the client's by a few seconds (death penalties land
+-- differently), so a run close to a boundary is marked derived and the History
+-- tab says so rather than asserting a number it cannot verify.
+function RunTracker.RepairTimedFlags()
+    local fixed = 0
+    for _, run in ipairs(ns.db.runs) do
+        if run.completed and not run.timed and not run.abandoned
+            and run.par and run.par > 0 and run.elapsed and run.elapsed < run.par then
+            run.timed = true
+            run.upgrade = upgradeForTime(run.elapsed, run.par)
+            run.upgradeDerived = true
+            fixed = fixed + 1
+        end
+    end
+    if fixed > 0 then ns.Rating.RecomputeAll() end
+    return fixed
+end
+
 function RunTracker.Finalize(run, result)
     run = run or RunTracker.Active()
     if not run then return nil end
@@ -228,15 +279,79 @@ function RunTracker.Finalize(run, result)
 
     run._wipeCounted = nil
 
-    if not run.debug and ns.settings.useDetails then
+    -- Not gated on the Details setting: the numbers come from Blizzard's own
+    -- meter now, and Details is only the fallback. Attempted here in case the
+    -- server has already released them, and again below once it has.
+    if not run.debug then
         pcall(ns.DetailsBridge.Enrich, run)
     end
+
+    -- The last pull of a key finishes *after* CHALLENGE_MODE_COMPLETED, so by the
+    -- time combat drops there is no active run and FightTracker would file a
+    -- second, near-duplicate record for the same dungeon. It needs to know a key
+    -- just ended here; it does not need the run itself.
+    RunTracker.justFinished = { at = GetTime(), dungeon = run.dungeon }
 
     ns.db.activeRun = nil
     ns.Inspect.Stop()
 
     table.insert(ns.db.runs, run)
     RunTracker.TrimHistory()
+    ns.Housekeeping.Enforce()
+
+    if not run.debug then
+        -- Details assembles its combined Mythic+ segment a moment after
+        -- CHALLENGE_MODE_COMPLETED, so the read above can come back empty or
+        -- partial. The run is already filed by now, so this just fills it in.
+        -- History has a manual "Pull from Details" for when even this is early.
+        -- This is the only chance. Details holds its segments in memory, so a
+        -- reload or logout discards them and the run can never be enriched
+        -- afterwards -- "Pull from Details" only works in the same session.
+        --
+        -- So retry rather than taking one shot: Details assembles its combined
+        -- Mythic+ segment some time after CHALLENGE_MODE_COMPLETED, and how long
+        -- is not ours to know.
+        -- Wait for the server to stop withholding before trying at all. While
+        -- the Combat restriction is active every value C_DamageMeter holds is a
+        -- secret, so a read during lockdown returns nothing however correct the
+        -- rest of the code is -- and the end of a key is exactly when you are
+        -- still in combat.
+        local attempts, delays = 0, { 5, 15, 30, 60 }
+        local function attempt()
+            attempts = attempts + 1
+            local ok, applied, why = pcall(ns.DetailsBridge.Enrich, run)
+
+            if ok and applied then
+                ns.Rating.RecomputeAll()
+                if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+                -- Say so. Silence is indistinguishable from failure, and this
+                -- path has been silently failing for most of its life.
+                ns.Print("recorded this run's combat stats.")
+                return
+            end
+
+            if delays[attempts + 1] then
+                C_Timer.After(delays[attempts + 1] - delays[attempts], attempt)
+                return
+            end
+
+            -- Never fail quietly. A run filed with every stat at zero and no
+            -- explanation is how this went unnoticed across several keys.
+            ns.Print("|cffd9a441could not read this run from Details:|r",
+                tostring(ok and why or "Details refused the read")
+                .. " Try |cffffff00Pull from Details|r on the History tab before "
+                .. "you reload -- Details forgets the run when you do.")
+        end
+        ns.DetailsBridge.WhenUnlocked(120, function(unlocked)
+            if not unlocked then
+                ns.Print("|cffd9a441still in combat two minutes after the key ended|r"
+                    .. " -- the server has not released this run's numbers. Try"
+                    .. " |cffffff00Pull from Details|r once you are out of combat.")
+                return
+            end
+            C_Timer.After(delays[1], attempt)
+        end)
+    end
 
     for guid, obs in pairs(run.observations) do
         ns.Roster.TouchCharacter(guid, {
@@ -351,6 +466,13 @@ local function verifyStillRunning()
 end
 
 ns.OnInit(function()
+    -- One-time repair for records filed before the completion API was fixed.
+    local fixed = RunTracker.RepairTimedFlags()
+    if fixed > 0 then
+        ns.Print(string.format("corrected %d run%s that were filed as over time but "
+            .. "finished inside par.", fixed, fixed == 1 and "" or "s"))
+    end
+
     ns.RegisterEvent("CHALLENGE_MODE_START", function() RunTracker.StartRun() end)
 
     ns.RegisterEvent("CHALLENGE_MODE_COMPLETED", function()

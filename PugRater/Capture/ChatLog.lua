@@ -13,6 +13,17 @@ local ADDON, ns = ...
 local ChatLog = {}
 ns.ChatLog = ChatLog
 
+-- Set the first time a line arrives with its text withheld. Midnight returns
+-- other players' chat as a secret value: it can be passed around but not read,
+-- not stored, and not written to SavedVariables. So party chat capture is simply
+-- not possible on this client, and the honest thing is to say so once rather
+-- than fill the history with blank rows.
+--
+-- Left as a runtime observation rather than a build check because the client
+-- withholds some lines and not others (your own text comes through), and because
+-- if Blizzard reopens it this starts working again with no code change.
+ChatLog.textWithheld = false
+
 local CHANNEL = {
     CHAT_MSG_PARTY          = "party",
     CHAT_MSG_PARTY_LEADER   = "party",
@@ -30,7 +41,8 @@ function ChatLog.Record(channel, text, senderName, senderGUID)
     if isWhisper then
         if not ns.settings.captureWhispers then return end
         -- Only whispers with someone in the group are part of the run record.
-        if not senderGUID or not run.observations[senderGUID] then return end
+        local safe = ns.SafeGUID(senderGUID)
+        if not safe or not run.observations[safe] then return end
     end
 
     run.chat = run.chat or {}
@@ -42,12 +54,20 @@ function ChatLog.Record(channel, text, senderName, senderGUID)
         run.chatTruncated = true
     end
 
+    if ns.IsSecret(text) then ChatLog.textWithheld = true end
+
+    -- Midnight can hand back a secret value for any of these. A secret cannot be
+    -- stored (it does not survive SavedVariables) or printed, so record the fact
+    -- rather than an empty string: a line that reads "hidden by the client" is a
+    -- different problem from one that was never captured, and the history panel
+    -- should not have to guess which happened.
     table.insert(run.chat, {
         t       = ns.Now(),
-        guid    = senderGUID,
-        name    = senderName,
+        guid    = ns.SafeGUID(senderGUID),
+        name    = ns.SafeGUID(senderName),
         channel = channel,
-        text    = text,
+        text    = ns.SafeGUID(text),
+        secret  = (ns.IsSecret(text) or ns.IsSecret(senderName)) or nil,
         whisper = isWhisper or nil,
     })
 end

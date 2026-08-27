@@ -8,16 +8,6 @@ ns.OptionsPanel = panel
 
 local COLUMN = 300
 
-local function section(parent, anchor, text, dx)
-    local fs = UI.Label(parent, text, 12, UI.COLORS.accent)
-    if anchor then
-        fs:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", dx or 0, -14)
-    else
-        fs:SetPoint("TOPLEFT", 14, -12)
-    end
-    return fs
-end
-
 local function check(parent, anchor, label, key)
     local cb = UI.CheckBox(parent, label,
         function() return ns.settings[key] end,
@@ -63,7 +53,7 @@ local function build(page)
 
     local refreshables = {}
 
-    local capture = section(left, nil, "Capture")
+    local capture = UI.Section(left, nil, "Capture")
     local c1 = check(left, capture, "Log party and instance chat", "captureChat")
     local c2 = check(left, c1, "Log whispers with groupmates", "captureWhispers")
     local c3 = check(left, c2, "Inspect groupmates for spec/ilvl", "inspectGroupmates")
@@ -71,12 +61,12 @@ local function build(page)
     local n1 = number(left, c4, "chat lines kept per run", "chatLinesPerRun")
     refreshables[#refreshables + 1] = n1
 
-    local display = section(left, n1, "Display")
+    local display = UI.Section(left, n1, "Display")
     local d1 = check(left, display, "Tier on player tooltips", "showTooltip")
     local d2 = check(left, d1, "Popup when a rated player joins", "showJoinPopup")
     local d3 = check(left, d2, "Badge applicants in group finder", "showLFGBadge")
 
-    local rating = section(left, d3, "Rating")
+    local rating = UI.Section(left, d3, "Rating")
     local r1 = check(left, rating, "Prefer companion refined tiers", "preferRefined")
     local n2 = number(left, r1, "runs before leaving Neutral", "minRunsForTier")
     local n3 = number(left, n2, "weight: previous season", "seasonDecay", true)
@@ -92,19 +82,27 @@ local function build(page)
     right:SetPoint("TOPLEFT", COLUMN, 0)
     right:SetPoint("BOTTOMRIGHT", 0, 0)
 
-    local messaging = section(right, nil, "Messaging")
+    local messaging = UI.Section(right, nil, "Messaging")
     local m1 = check(right, messaging, "Prefer Battle.net whispers", "preferBNet")
-    local n5 = number(right, m1, "seconds between sends", "sendStagger", true)
-    local n6 = number(right, n5, "hours before re-messaging someone", "messageCooldownHours")
+    local m2 = check(right, m1, "Offer people whose status is unknown", "includeUnknownOnline")
+    local m3 = check(right, m2, "Skip people already in a dungeon or raid", "skipBusyPlayers")
+    local n5 = number(right, m3, "seconds between sends", "sendStagger", true)
+    local n6 = number(right, n5, "seconds before re-messaging someone", "messageCooldownSeconds")
+    local n6b = number(right, n6, "messages kept in Recently sent", "maxSentLog")
     refreshables[#refreshables + 1] = n5
     refreshables[#refreshables + 1] = n6
+    refreshables[#refreshables + 1] = n6b
 
-    local data = section(right, n6, "Data")
-    local n7 = number(right, data, "runs kept in game", "maxRunsInGame")
+    local data = UI.Section(right, n6b, "Data")
+    local n7 = number(right, data, "keys kept in game", "maxRunsInGame")
+    local n8 = number(right, n7, "other fights kept", "maxFightsInGame")
+    local n9 = number(right, n8, "maximum saved data (MB)", "maxStorageMB")
     refreshables[#refreshables + 1] = n7
+    refreshables[#refreshables + 1] = n8
+    refreshables[#refreshables + 1] = n9
 
     local companion = UI.Label(right, "", 11, { 0.65, 0.62, 0.72 })
-    companion:SetPoint("TOPLEFT", n7, "BOTTOMLEFT", 4, -8)
+    companion:SetPoint("TOPLEFT", n9, "BOTTOMLEFT", 4, -8)
     companion:SetWidth(COLUMN - 20)
     companion:SetJustifyV("TOP")
 
@@ -166,7 +164,7 @@ local function build(page)
     ----------------------------------------------------------------------------
     page.Refresh = function()
         for _, r in ipairs(refreshables) do r.Refresh() end
-        for _, cb in ipairs({ c1, c2, c3, c4, d1, d2, d3, r1, m1 }) do cb:Refresh() end
+        for _, cb in ipairs({ c1, c2, c3, c4, d1, d2, d3, r1, m1, m2, m3 }) do cb:Refresh() end
 
         local runs, chars = #ns.db.runs, ns.Roster.CountCharacters()
         local unexported = 0
@@ -181,8 +179,34 @@ local function build(page)
             lookup = "no companion data yet (run |cffffff00pugrater all|r)"
         end
 
-        companion:SetText(string.format("%d runs, %d characters, %d persons\n%d runs awaiting export\n%s",
-            runs, chars, #ns.Roster.AllPersons(), unexported, lookup))
+        -- Whether the combat log is reachable at all is not a preference, but it
+        -- decides what a run record can contain, so it belongs next to the counts.
+        local chat = ns.ChatLog.textWithheld
+            and "|cffd9a441chat log: this client withholds other players' text|r"
+            or "chat log: capturing party, instance and whisper lines"
+
+        local cleu = ns.CombatLog.available
+            and "combat log: capturing deaths, interrupts, dispels and CC"
+            or "|cffd9a441combat log: unavailable on this client|r - outcome and "
+                .. "Details still recorded, per-player combat tallies are not"
+
+        -- What it costs to keep. Measured rather than estimated: the limit above
+        -- is only a limit if the number beside it is true.
+        local size = ns.MeasureDB()
+        local budget = ns.Housekeeping.Budget()
+        local store = string.format("%d records, %s saved of %d MB",
+            size.records,
+            size.bytes >= 1048576
+                and string.format("%.2f MB", size.bytes / 1048576)
+                or string.format("%d KB", math.floor(size.bytes / 1024)),
+            math.floor(budget / 1048576))
+        if budget > 0 and size.bytes > budget * 0.8 then
+            store = "|cffd9a441" .. store .. "|r"
+        end
+
+        companion:SetText(string.format(
+            "%d runs, %d characters, %d persons\n%s\n%d runs awaiting export\n%s\n%s\n%s",
+            runs, chars, #ns.Roster.AllPersons(), store, unexported, cleu, chat, lookup))
 
         local tags = {}
         for tag, info in pairs(ns.db.tags) do

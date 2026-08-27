@@ -10,6 +10,10 @@ local ADDON, ns = ...
 local Lookup = {}
 ns.Lookup = Lookup
 
+-- The read has to stay lazy: PugRater_Lookup.lua is loaded after this file, so
+-- there is nothing to cache at file scope. Worth knowing that reading a global
+-- an addon created taints the calling stack -- harmless here, but it is why the
+-- combat-log registration is deliberately not made from the OnInit chain.
 local function data()
     local t = _G.PugRaterLookup
     return type(t) == "table" and t or nil
@@ -32,12 +36,22 @@ end
 -- Refined record for one character GUID: { tier, score, rioCurrent, rioPrevious }.
 function Lookup.Get(guid)
     local d = data()
+    guid = ns.SafeGUID(guid)
     if not d or not guid then return nil end
     local chars = d.characters
     return chars and chars[guid] or nil
 end
 
+-- current, previous. The live RaiderIO addon wins when it has an answer: the
+-- companion file is a snapshot and may be days old, or -- as it is today --
+-- absent entirely, which is why every RIO cell used to read "-".
 function Lookup.RIO(guid)
+    local char = ns.Roster.GetCharacter(guid)
+    if char and char.name and ns.RaiderIOBridge.IsAvailable() then
+        local current, previous = ns.RaiderIOBridge.Scores(char.name)
+        if current or previous then return current, previous end
+    end
+
     local rec = Lookup.Get(guid)
     if not rec then return nil, nil end
     return rec.rioCurrent, rec.rioPrevious

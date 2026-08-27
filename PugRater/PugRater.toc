@@ -6,7 +6,7 @@
 ## SavedVariables: PugRaterDB
 ## X-License: MIT
 ## X-Category: Group Finder
-## X-Website: https://github.com/duanebc/PugRater
+## X-Website: https://github.com/duanebc/pugrater
 
 # The packager reads these to know where to upload; a missing one just skips
 # that host. Two hashes = a real TOC directive, one = an inert comment.
@@ -15,6 +15,7 @@
 # X-WoWI-ID: 00000
 
 Core.lua
+Housekeeping.lua
 
 # Rating first: everything downstream asks it for tiers and season constants.
 Rating\Provisional.lua
@@ -24,10 +25,12 @@ Roster\Model.lua
 Roster\Filters.lua
 
 Capture\DetailsBridge.lua
+Capture\RaiderIOBridge.lua
 Capture\Inspect.lua
 Capture\CombatLog.lua
 Capture\ChatLog.lua
 Capture\RunTracker.lua
+Capture\FightTracker.lua
 
 Messaging\Templates.lua
 Messaging\Sender.lua
@@ -55,4 +58,6 @@ Debug\FakeRun.lua
 Debug\EventSim.lua
 Debug\FakeRoster.lua
 Debug\EchoSender.lua
+# Last: the panel drives every module above it.
+Debug\DebugPanel.lua
 #@end-debug@

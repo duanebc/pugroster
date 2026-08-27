@@ -119,6 +119,13 @@ function Replies.Invite(person)
         return ns.Debug.EchoInvite(char.name)
     end
 
+    -- Outside the echo sandbox a seeded name is not a person who can be invited.
+    if person.debug or char.debug then
+        ns.Print(string.format("|cffff8080%s is simulated -- no invite sent.|r",
+            ns.ShortName(char.name)))
+        return false
+    end
+
     if C_PartyInfo and C_PartyInfo.InviteUnit then
         C_PartyInfo.InviteUnit(char.name)
     else

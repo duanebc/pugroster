@@ -86,7 +86,19 @@ end
 
 local running = false
 
+function EventSim.IsRunning()
+    return running
+end
+
+-- The slash entry point: parse the argument strings, then hand off. Split from
+-- Run so a caller with a flags table already in hand -- the debug panel -- does
+-- not have to fake `/pugdebug run` arguments to reach it, and can express a wipe
+-- count, which the string form flattens to a fixed 4.
 function EventSim.SimulateRun(args)
+    return EventSim.Run(parseFlags(args or {}))
+end
+
+function EventSim.Run(flags)
     if running then
         ns.Debug.Print("a simulated run is already playing out.")
         return
@@ -96,8 +108,7 @@ function EventSim.SimulateRun(args)
         return
     end
 
-    local flags = parseFlags(args or {})
-    local spec = ns.FakeRun.MakeRun(flags)
+    local spec = ns.FakeRun.MakeRun(flags or {})
     local Debug = ns.Debug
     running = true
 

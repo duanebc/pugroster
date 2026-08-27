@@ -1,52 +1,95 @@
 # Changelog
 
-## [Unreleased]
+## v1.0.0 -- 2026-08-27
 
-First implementation, built from `docs/pug-rater-plan.md`. Covers phases 1-6 of
-the plan; the Python companion (phase 3's out-of-game half) is not written yet.
+First public release.
 
-### Capture
-- Mythic+ run lifecycle from `CHALLENGE_MODE_START` to `CHALLENGE_MODE_COMPLETED`,
-  with abandon, disband and key-reset paths.
-- In-progress run state persisted to SavedVariables, so a `/reload` mid-key
-  resumes instead of losing the run.
-- Per-player observations: deaths, wipes, interrupts, dispels, crowd control,
-  damage and healing, item level, spec, role, left-early flag.
-- Party, instance and whisper chat logged per run, capped so one chatty key
-  cannot bloat SavedVariables.
-- Throttled inspect queue for groupmate spec and item level.
-- Optional Details enrichment for damage and healing, feature-detected per
-  function so a missing method degrades to our own tallies.
+- **Every Mythic+ key is recorded.** From `CHALLENGE_MODE_START` to
+  `CHALLENGE_MODE_COMPLETED`: dungeon, key level, affixes, timer result and
+  upgrade level, plus a per-player observation for all five of you -- deaths,
+  wipes, interrupts, dispels, crowd control, damage, healing, item level, spec,
+  role and whether anyone left early. Abandon, disband and key-reset are handled,
+  and the in-progress run lives in SavedVariables so a `/reload` mid-key resumes
+  rather than losing it.
+- **Every other fight is recorded too** -- raids, heroics, delves, PvP, open-world
+  pulls and target dummies -- anything lasting more than five seconds, classified
+  by content type. A dungeon visit is one history row with each combat as a
+  segment inside it, named by its boss or marked as trash, the way a damage meter
+  paginates. Fights are stored apart from keys, so a raid boss or a training
+  dummy can never move somebody's Mythic+ tier.
+- **Ratings that explain themselves.** Outcome dominates -- timed, upgrade level,
+  completion -- and per-player stats adjust within that band. Contribution scales
+  with key level, a tank or healer death weighs heavier than a DPS death, previous
+  seasons decay, and a small sample cannot leave Neutral. The roster panel shows
+  the per-run breakdown and `/pugdebug tier <name>` prints the arithmetic weight
+  by weight.
+- **A roster of people, not characters.** Characters link under a person;
+  Battle.net friends auto-link where the friends list exposes the mapping and
+  anyone else can be linked by hand. Your whole friends list is imported and
+  tagged `existing_friend`, because the people you already know are exactly the
+  ones worth bringing along. Manual tags (relationship, play style, availability,
+  voice, plus anything you invent) sit on the person; auto-tags for role, spec,
+  item level bracket, Raider.IO bracket and tier are derived and always current.
+  Names carry their realm everywhere they are shown.
+- **A filter builder over both kinds of tag** -- `role = healer AND ilvl >= 640
+  AND tag = push` -- saveable as a named group, and usable from the Send tab
+  without saving it first.
+- **Messaging by group.** Pick a saved group or a live filter, preview the exact
+  expanded message for every recipient, uncheck anyone, and send with a
+  configurable stagger. Templates support `{name} {key} {dungeon} {mykeylevel}
+  {tier} {runs} {me}`. Battle.net whisper when the account is known, character
+  whisper otherwise. A per-person cooldown, a `do-not-message` tag and a sent log
+  are enforced in the send path rather than the UI. Replies are tracked verbatim
+  with manual yes/no marking and one-click invite.
+- **Nothing is sent by accident.** Echo mode is off by default; nothing is
+  selected in the Send tab until you select it; and when echo mode is on the
+  summary says ECHO MODE, the button reads "Echo to N" and completion reports
+  that nothing was really sent. Every send prints a clickable player name in
+  chat, so the moment you most want to whisper someone you can.
+- **The send list knows who is actually available.** It offers the whole roster
+  rather than only the people whose online status is visible -- a cross-realm pug
+  is neither a friend nor a guildmate, and the old rule hid exactly the players
+  the roster exists for. Anyone in a dungeon, raid or battleground is left out;
+  an empty list says how many were considered, how many were dropped and why,
+  and names the setting that changes each.
+- **Run history with dps and hps computed over combat time**, not wall clock,
+  since the minutes spent running between packs are not minutes anyone was doing
+  damage in. Filterable by content type, with a per-record Delete and a "Pull
+  from Details" for a run captured before enrichment worked.
+- **Mythic+ scores from the RaiderIO addon** when it is installed, with a second
+  column for last season in RaiderIO's own previous-season colour, since the two
+  seasons are not on the same scale.
+- **Tooltips and a group-finder badge.** Tier, runs together, tags, note, item
+  level and both scores on player tooltips; a colour badge on group-finder
+  applicants, drawn as an addon-owned overlay so no widget, field or script hook
+  is left on a Blizzard frame. A dismissible toast when a rated player joins your
+  group.
+- No external libraries -- pure Blizzard API, no Ace3, no LibStub.
 
-### Rating
-- Outcome-dominant provisional tiers, scaled by key level, weighted by role,
-  decayed by season, gated on sample size.
-- Per-run breakdown exposed in the roster panel and `/pugdebug tier`.
-- Reader for the companion-generated `PugRater_Lookup.lua`; refined tiers and
-  Raider.IO scores are preferred when present, and its absence is a no-op.
+### On Midnight (interface 120000+)
 
-### Roster
-- Person/character model with Battle.net auto-linking and manual "same person"
-  linking.
-- Manual tags with default categories, user-extensible; derived auto-tags for
-  role, spec, item level bracket, Raider.IO bracket and tier.
-- Filter builder over tags and numeric fields, saveable as named groups.
-- Online suggestions from the friends list, Battle.net friends and guild roster.
+The combat log is closed to addons, so some of what PugRater records comes from
+elsewhere or not at all. Options reports which is in effect on your client.
 
-### Messaging
-- Templates with placeholder expansion, managed in the send panel.
-- Recipient preview with per-person messages, staggered send queue, cancel.
-- Per-person cooldown, `do-not-message` tag and sent log, enforced in the send
-  path rather than the UI.
-- Verbatim reply tracking with manual yes/no marking and one-click invite.
+- Damage and healing come from `C_DamageMeter`, Blizzard's server-side meter,
+  with Details as the fallback -- both, rather than our own tallies.
+- Deaths, interrupts, dispels and crowd control are unavailable. Outcome-based
+  rating is unaffected.
+- Other players' chat text is withheld, so a run whose every line was withheld
+  says so once instead of listing blank rows. The capture is left in place, so it
+  starts working again if Blizzard reopens it.
+- Item level still works: inspect replies carry a secret GUID and are matched to
+  the unit the request was made for.
 
-### Display
-- Tier, runs together, tags and note on player tooltips.
-- Colour badge on group-finder applicants, feature-detected and taint-safe.
-- Dismissible toast when a rated player joins the group.
+### Not included in released builds
 
-### Development
-- `Debug/` simulation suite: fake runs driven through the real event handlers,
-  bulk history seeding, seeded roster and tags, fake friends list, message echo
-  and simulated replies. Stripped from released packages by `.pkgmeta` and a
-  `#@debug@` block.
+- The `Debug/` simulation suite -- fake runs driven through the real event
+  handlers, seeded rosters and history, a messaging sandbox, tier and run
+  inspectors and a taint capture. It registers its own tab, so a released build
+  has four tabs and no debug UI at all.
+
+### Not written yet
+
+- The Python companion, which would refine tiers offline and fill in Raider.IO
+  scores and same-person links. The generated `PugRater_Lookup.lua` ships as an
+  empty stub, so the addon behaves identically until it exists.

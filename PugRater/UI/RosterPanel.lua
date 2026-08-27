@@ -9,12 +9,15 @@ ns.RosterPanel = panel
 local ROW_HEIGHT = 34
 local DETAIL_WIDTH = 300
 
+-- Widths total under the list's ~584px so the last column is not clipped by the
+-- scrollbar. Name and Spec gave up the room the LS-RIO column needed.
 local COLUMNS = {
-    { key = "name",  label = "Name",  width = 130 },
-    { key = "role",  label = "Role",  width = 60 },
-    { key = "spec",  label = "Spec",  width = 90 },
+    { key = "name",  label = "Name",  width = 175 },
+    { key = "role",  label = "Role",  width = 56 },
+    { key = "spec",  label = "Spec",  width = 74 },
     { key = "ilvl",  label = "ilvl",  width = 42 },
     { key = "rio",   label = "RIO",   width = 48 },
+    { key = "rioPrev", label = "LS-RIO", width = 52 },
     { key = "tier",  label = "Tier",  width = 62 },
     { key = "runs",  label = "Runs",  width = 42 },
     { key = "last",  label = "Last",  width = 60 },
@@ -28,6 +31,11 @@ local state = {
     builder = { field = "tag", op = "has", value = "" },
 }
 
+-- The Send tab borrows this, so a filter built here can be messaged from there.
+-- Declared after `state`: defined above it, the body would resolve `state` as a
+-- nil global rather than this local.
+function panel.CurrentFilter() return state.filter end
+
 --------------------------------------------------------------------------------
 -- Row data
 --------------------------------------------------------------------------------
@@ -37,15 +45,21 @@ local TIER_ORDER = { Great = 4, Good = 3, Neutral = 2, Avoid = 1 }
 local function rowFor(person)
     local char = ns.Roster.MainCharacter(person)
     local tier, source = ns.Roster.EffectiveTier(person)
-    local rio = char and select(1, ns.Lookup.RIO(char.guid)) or 0
+    local rio, rioPrev = 0, 0
+    if char then rio, rioPrev = ns.Lookup.RIO(char.guid) end
     return {
         person = person,
         char   = char,
-        name   = person.name or "?",
+        name     = person.name or "?",
+        fullName = (function()
+            local c = ns.Roster.MainCharacter(person)
+            return c and c.name or person.name or "?"
+        end)(),
         role   = char and char.role or "",
         spec   = char and char.specName or "",
         ilvl   = char and char.ilvl or 0,
-        rio    = rio or 0,
+        rio     = rio or 0,
+        rioPrev = rioPrev or 0,
         tier   = tier,
         tierSource = source,
         runs   = ns.Roster.RunsTogether(person),
@@ -56,7 +70,11 @@ end
 local function buildRows()
     local rows = {}
     for _, person in ipairs(ns.Filters.Apply(state.filter)) do
-        rows[#rows + 1] = rowFor(person)
+        -- You are in your own runs, so you end up in your own roster. Rating
+        -- yourself against yourself is meaningless, so leave yourself out.
+        if not ns.Roster.IsSelf(person) then
+            rows[#rows + 1] = rowFor(person)
+        end
     end
 
     local key, asc = state.sortKey, state.sortAsc
@@ -146,14 +164,19 @@ local function buildFilterBar(parent, page)
 
     -- Value: a menu for tag/enum fields, a typed box for everything else.
     local valueBtn = UI.MenuButton(bar, 150,
-        function() return (state.builder.value ~= "" and state.builder.value) or "choose..." end,
+        function()
+            if state.builder.value == "" then return "choose..." end
+            return ns.Filters.ValueLabel(state.builder.field, state.builder.value)
+        end,
         function()
             local entries = {}
             local t, def = ns.Filters.FieldType(state.builder.field)
             local values = t == "tag" and ns.Roster.AllTags() or (def and def.values) or {}
             for _, v in ipairs(values) do
                 entries[#entries + 1] = {
-                    text = v, checked = state.builder.value == v,
+                    -- Label for reading, value for matching.
+                    text = ns.Filters.ValueLabel(state.builder.field, v),
+                    checked = state.builder.value == v,
                     func = function() state.builder.value = v; UI.Refresh() end,
                 }
             end
@@ -325,6 +348,40 @@ local function buildDetail(parent)
     chars:SetWidth(DETAIL_WIDTH - 20)
     chars:SetJustifyV("TOP")
 
+    -- Adding a friend is what makes someone's online status visible, which is
+    -- otherwise only knowable for Battle.net friends, character friends and
+    -- guildmates. Always add by "Name-Realm": cross-realm friends are ordinary in
+    -- retail, and the realm is part of the identity anyway.
+    --
+    -- The server answers asynchronously and refuses with "Player not found" for a
+    -- character that is not currently online, so check the friends list a moment
+    -- later and report what actually happened rather than claiming success.
+    local friendBtn = UI.Button(d, "Add friend", 100, function()
+        local person = ns.Roster.GetPerson(state.selected)
+        local char = person and ns.Roster.MainCharacter(person)
+        if not char or not char.name then return end
+
+        if not (C_FriendList and C_FriendList.AddFriend) then
+            ns.Print("this client has no AddFriend API. Use |cffffff00/friend "
+                .. char.name .. "|r")
+            return
+        end
+
+        C_FriendList.AddFriend(char.name)
+        C_Timer.After(2, function()
+            if ns.Roster.IsFriend(char.name) then
+                ns.Print("added |cff9b7fd6" .. char.name .. "|r to your friends list.")
+            else
+                ns.Print(string.format("could not add %s. The server only accepts a "
+                    .. "friend request while that character is online -- try again "
+                    .. "when they are.", char.name))
+            end
+            UI.Refresh()
+        end)
+    end)
+    friendBtn:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", -2, -6)
+    friendBtn:SetHeight(18)
+
     local linkBtn = UI.MenuButton(d, 130, function() return "Same person as..." end, function()
         local person = ns.Roster.GetPerson(state.selected)
         local myChar = ns.Roster.MainCharacter(person)
@@ -391,7 +448,8 @@ local function buildDetail(parent)
         end
 
         local char = ns.Roster.MainCharacter(person)
-        name:SetText(ns.Colorize(person.name or "?", char and ns.ClassColor(char.classFile)))
+        name:SetText(ns.NameWithRealm(char and char.name or person.name,
+            char and ns.ClassColor(char.classFile)) .. ns.SimTag(person))
         sub:SetText(string.format("%d runs together  -  last %s",
             ns.Roster.RunsTogether(person), ns.TimeAgo(ns.Roster.LastPlayedWith(person))))
 
@@ -492,11 +550,22 @@ local function build(page)
         return row
     end, function(row, item)
         row.item = item
-        row.cells.name:SetText(ns.Colorize(item.name, item.char and ns.ClassColor(item.char.classFile)))
-        row.cells.role:SetText(item.role ~= "" and item.role:sub(1, 1) .. item.role:sub(2):lower() or "-")
+        row.cells.name:SetText(ns.NameWithRealm(item.fullName,
+            item.char and ns.ClassColor(item.char.classFile)) .. ns.SimTag(item.person))
+        row.cells.role:SetText(ns.RoleLabel(item.role))
         row.cells.spec:SetText(item.spec ~= "" and item.spec or "-")
         row.cells.ilvl:SetText(item.ilvl > 0 and tostring(item.ilvl) or "-")
         row.cells.rio:SetText(item.rio > 0 and tostring(math.floor(item.rio)) or "-")
+        -- Last season is on a different scale from this one, so it carries
+        -- RaiderIO's own previous-season colour rather than sitting in the same
+        -- white as the current score.
+        if item.rioPrev > 0 then
+            local c = ns.RaiderIOBridge.ScoreColor(item.rioPrev, true)
+            local text = tostring(math.floor(item.rioPrev))
+            row.cells.rioPrev:SetText(c and ns.Colorize(text, c) or text)
+        else
+            row.cells.rioPrev:SetText("-")
+        end
         row.cells.tier:SetText(ns.TierText(item.tier) .. (item.tierSource == "override" and "*" or ""))
         row.cells.runs:SetText(tostring(item.runs))
         row.cells.last:SetText(item.last > 0 and ns.TimeAgo(item.last) or "-")

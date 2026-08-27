@@ -34,6 +34,14 @@ Filters.OPS = {
     number = { ">=", "<=", "=" },
 }
 
+-- What a stored value should be shown as. The role field stores the client's
+-- DAMAGER because that is what UnitGroupRolesAssigned returns and what every
+-- comparison is against; nobody should have to read it that way.
+function Filters.ValueLabel(field, value)
+    if field == "role" then return ns.RoleLabel(value) end
+    return tostring(value or "")
+end
+
 function Filters.FieldType(fieldKey)
     for _, f in ipairs(Filters.FIELDS) do
         if f.key == fieldKey then return f.type, f end
@@ -128,26 +136,72 @@ end
 -- Online suggestions
 --------------------------------------------------------------------------------
 
--- Persons matching the filter who are online right now, as
--- { person = person, character = char, online = { ... } }.
+-- Persons matching the filter who can be messaged, as
+-- { person = person, character = char, online = { ... } | nil }.
+--
+-- `online` is nil when we cannot see their status. That is the normal case for
+-- the people this addon is about: online-ness is only visible for Battle.net
+-- friends, character friends and guildmates, and a cross-realm pug is none of
+-- those. Restricting the list to the visibly-online therefore hid exactly the
+-- players you kept a roster of in the first place -- so they are offered too,
+-- marked, unless the setting says otherwise. A whisper to someone who is offline
+-- fails harmlessly.
+-- Why people did not make the list, so an empty Send tab can say what happened
+-- rather than leaving you to guess. Reset on every call.
+Filters.lastSkipped = { busy = 0, self = 0, offline = 0, nameless = 0, considered = 0 }
+
 function Filters.OnlineMatches(filter)
     local index = ns.Roster.OnlineIndex()
+    local includeUnknown = ns.settings.includeUnknownOnline
     local out = {}
 
+    local skipped = { busy = 0, self = 0, offline = 0, nameless = 0, considered = 0 }
+    Filters.lastSkipped = skipped
+
     for _, person in ipairs(Filters.Apply(filter)) do
-        local bestChar, bestInfo
-        for guid in pairs(person.characters) do
-            local char = ns.Roster.GetCharacter(guid)
-            local info = char and char.name and index[char.name]
-            if info then
-                -- Prefer a BNet match: it can be whispered on any character.
-                if not bestInfo or (info.bnet and not bestInfo.bnet) then
-                    bestChar, bestInfo = char, info
+        -- Never offer yourself. The guild roster and the friends list both
+        -- include the player, so without this your own characters come back as
+        -- "recipients" -- and on an account with nobody else online, they are
+        -- the only ones that do.
+        skipped.considered = skipped.considered + 1
+        if ns.Roster.IsSelf(person) then
+            skipped.self = skipped.self + 1
+        else
+            local bestChar, bestInfo, fallbackChar
+            for guid in pairs(person.characters) do
+                local char = ns.Roster.GetCharacter(guid)
+                local info = char and char.name and index[char.name]
+                if info then
+                    -- Prefer a BNet match: it can be whispered on any character.
+                    if not bestInfo or (info.bnet and not bestInfo.bnet) then
+                        bestChar, bestInfo = char, info
+                    end
+                elseif char and char.name and not fallbackChar then
+                    fallbackChar = char
                 end
             end
-        end
-        if bestInfo then
-            out[#out + 1] = { person = person, character = bestChar, online = bestInfo }
+
+            -- Someone mid-dungeon, mid-raid or in a battleground is not
+            -- available, and an invite reaching them then is noise at the worst
+            -- possible moment. Dropping them has to be a real drop: nulling the
+            -- info would fall through to the unknown-status branch below and put
+            -- them straight back on the list, which is the opposite of the point.
+            local busy = bestInfo and ns.settings.skipBusyPlayers and bestInfo.busy
+
+            if busy then
+                skipped.busy = skipped.busy + 1
+            elseif bestInfo then
+                out[#out + 1] = { person = person, character = bestChar, online = bestInfo }
+            elseif includeUnknown then
+                local char = fallbackChar or ns.Roster.MainCharacter(person)
+                if char and char.name then
+                    out[#out + 1] = { person = person, character = char, online = nil }
+                else
+                    skipped.nameless = skipped.nameless + 1
+                end
+            else
+                skipped.offline = skipped.offline + 1
+            end
         end
     end
 
@@ -188,7 +242,8 @@ function Filters.DescribeCondition(cond)
         return (cond.op == "lacks" and "not " or "") .. tostring(cond.value)
     end
     local _, def = Filters.FieldType(cond.field)
-    return string.format("%s %s %s", def and def.label or cond.field, cond.op or "=", tostring(cond.value))
+    return string.format("%s %s %s", def and def.label or cond.field, cond.op or "=",
+        Filters.ValueLabel(cond.field, cond.value))
 end
 
 function Filters.Describe(filter)

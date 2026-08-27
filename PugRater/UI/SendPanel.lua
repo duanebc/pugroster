@@ -17,14 +17,17 @@ local state = {
     template = 1,
     message  = nil,        -- nil = follow the selected template
     entries  = {},
-    deselected = {},       -- [personId] = true, survives refreshes
+    selected = {},         -- [personId] = true, survives refreshes
     status   = "",
+    logScrollX = 0,        -- how far the sent log is scrolled right
 }
 
 -- Seeded from the roster panel: message exactly one person.
 function panel.SeedWithPerson(person)
     state.filter = { match = "all", conditions = { { field = "name", op = "is", value = person.name } } }
-    wipe(state.deselected)
+    -- Asking to message one person is asking for them to be selected.
+    wipe(state.selected)
+    state.selected[person.id] = true
     state.status = ""
 end
 
@@ -37,9 +40,19 @@ end
 local function rebuildEntries()
     state.entries = ns.Sender.BuildRecipients(state.filter, currentText())
     for _, entry in ipairs(state.entries) do
-        if state.deselected[entry.person.id] then entry.selected = false end
+        entry.selected = state.selected[entry.person.id] and not entry.blocked or false
     end
     return state.entries
+end
+
+-- Echo mode is on by default in a development build: EchoSender replaces the
+-- dispatch, prints the message locally, and nothing leaves the client -- while
+-- the queue, cooldown and sent log all behave exactly as a real send would. That
+-- is how a message can be reported sent and never arrive, so the Send tab has to
+-- say so in more than one place. Feature-detected, so a released build (which has
+-- no Debug/ at all) never shows any of it.
+local function echoing()
+    return ns.EchoSender and ns.EchoSender.IsEnabled() and true or false
 end
 
 local function selectedCount()
@@ -62,10 +75,26 @@ local function build(page)
         return state.filter and ns.Filters.Describe(state.filter):sub(1, 22) or "everyone online"
     end, function()
         local entries = { { text = "everyone online", func = function()
-            state.filter = nil; wipe(state.deselected); UI.Refresh() end } }
+            state.filter = nil; wipe(state.selected); UI.Refresh() end } }
+
+        -- The Roster tab has the filter builder; this tab only had saved groups,
+        -- so a filter you had just built there did nothing here until you saved
+        -- it. Borrow it directly.
+        local rosterFilter = ns.RosterPanel and ns.RosterPanel.CurrentFilter()
+        if rosterFilter and rosterFilter.conditions and #rosterFilter.conditions > 0 then
+            entries[#entries + 1] = {
+                text = "Roster filter: " .. ns.Filters.Describe(rosterFilter):sub(1, 30),
+                func = function()
+                    state.filter = rosterFilter
+                    wipe(state.selected)
+                    UI.Refresh()
+                end,
+            }
+        end
+
         for _, name in ipairs(ns.Filters.ListGroups()) do
             entries[#entries + 1] = { text = name, func = function()
-                state.filter = ns.Filters.GetGroup(name); wipe(state.deselected); UI.Refresh() end }
+                state.filter = ns.Filters.GetGroup(name); wipe(state.selected); UI.Refresh() end }
         end
         if #entries == 1 then
             entries[#entries + 1] = { text = "(save groups in the Roster tab)" }
@@ -77,20 +106,49 @@ local function build(page)
     local refreshBtn = UI.Button(page, "Refresh online", 110, function() UI.Refresh() end)
     refreshBtn:SetPoint("LEFT", groupBtn, "RIGHT", 6, 0)
 
+    -- Both buttons are no-ops when every match is blocked, which looks exactly
+    -- like a dead button. Say what happened instead of leaving the list to
+    -- explain itself.
+    local function reportNothingSelectable()
+        if #state.entries > 0 and selectedCount() == 0 then
+            ns.Print(string.format("nothing selectable: all %d matches are blocked.", #state.entries))
+        end
+    end
+
     local selectAll = UI.Button(page, "Select all", 90, function()
-        wipe(state.deselected)
+        for _, e in ipairs(state.entries) do
+            if not e.blocked then state.selected[e.person.id] = true end
+        end
         UI.Refresh()
+        reportNothingSelectable()
     end)
     selectAll:SetPoint("LEFT", refreshBtn, "RIGHT", 6, 0)
 
     local selectNone = UI.Button(page, "Select none", 90, function()
-        for _, e in ipairs(state.entries) do state.deselected[e.person.id] = true end
+        wipe(state.selected)
         UI.Refresh()
     end)
     selectNone:SetPoint("LEFT", selectAll, "RIGHT", 6, 0)
 
+    -- The re-message cooldown is a courtesy guard against pestering people, so
+    -- there has to be a way to lift it for someone you actually need to reach.
+    -- It applies to whoever is listed right now, so filter first to narrow it.
+    local clearCd = UI.Button(page, "Clear cooldowns", 120, function()
+        local cleared = 0
+        for _, e in ipairs(state.entries) do
+            if ns.Sender.ClearCooldown(e.person) then cleared = cleared + 1 end
+        end
+        UI.Refresh()
+        ns.Print(cleared > 0
+            and string.format("cleared the message cooldown for %d listed %s.",
+                cleared, cleared == 1 and "person" or "people")
+            or "no one listed was on cooldown.")
+    end)
+    clearCd:SetPoint("LEFT", selectNone, "RIGHT", 6, 0)
+
     local summary = UI.Label(page, "", 11, { 0.65, 0.62, 0.72 })
     summary:SetPoint("TOPLEFT", groupBtn, "BOTTOMLEFT", 2, -6)
+
 
     ----------------------------------------------------------------------------
     -- Template editor
@@ -170,16 +228,47 @@ local function build(page)
     local logList = UI.ScrollList(page, 16, function(parent)
         local row = UI.MakeRow(parent)
         row.text = UI.Label(row, "", 10, { 0.7, 0.7, 0.76 })
-        row.text:SetPoint("LEFT", 6, 0)
         row.text:SetWordWrap(false)
+        row.text:SetJustifyH("LEFT")
+        -- Clicking a sent line opens a whisper to whoever it went to. The chat
+        -- notification carries a player link for the same reason; this is the
+        -- same affordance where you are already looking.
+        row:SetScript("OnClick", function(self)
+            local name = self.rec and self.rec.name
+            if not name or ns.IsSecret(name) then return end
+            if ChatFrame_SendTell then
+                ChatFrame_SendTell(name)
+            else
+                ns.Print("whisper", ns.PlayerLink(name))
+            end
+        end)
         return row
     end, function(row, rec)
+        row.rec = rec
         row.text:SetText(string.format("|cff8a8a95%s|r %s: %s",
             date("%H:%M", rec.t), ns.ShortName(rec.name or "?"), rec.text or ""))
+
+        -- Anchored on both sides so the line is bounded by the row rather than
+        -- drawn at its natural width, which is how a long message ended up
+        -- painted across the game outside the addon entirely. The left edge
+        -- carries the horizontal scroll offset; the list clips what runs past it.
+        row.text:ClearAllPoints()
+        row.text:SetPoint("LEFT", row, "LEFT", 6 - state.logScrollX, 0)
+        row.text:SetPoint("RIGHT", row, "RIGHT", -4, 0)
     end)
+    -- Frames do not clip their children by default, so without this the scrolled
+    -- text would spill out of the left edge instead of disappearing under it.
+    logList:SetClipsChildren(true)
     logList:SetParent(editor)
     logList:SetPoint("TOPLEFT", logLabel, "BOTTOMLEFT", -4, -2)
-    logList:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -8, 40)
+    logList:SetPoint("BOTTOMRIGHT", editor, "BOTTOMRIGHT", -8, 56)
+
+    local logScroll = UI.HScrollBar(editor, function(value)
+        state.logScrollX = value
+        logList:Refresh()
+    end)
+    logScroll:SetPoint("TOPLEFT", logList, "BOTTOMLEFT", 4, -4)
+    logScroll:SetPoint("RIGHT", logList, "RIGHT", -26, 0)
 
     local sendBtn = UI.Button(editor, "Send", 120, function()
         local count = selectedCount()
@@ -196,7 +285,9 @@ local function build(page)
 
         local queued, err = ns.Sender.SendBatch(state.entries, function(what, entry, remaining)
             if what == "done" then
-                state.status = "send complete."
+                state.status = echoing()
+                    and "|cffd9a441echoed -- nothing was really sent.|r"
+                    or "send complete."
             elseif entry then
                 state.status = string.format("%s %s (%d left)", what, ns.ShortName(entry.person.name), remaining)
             end
@@ -228,9 +319,9 @@ local function build(page)
             local entry = row.entry
             if not entry then return end
             if self:GetChecked() then
-                state.deselected[entry.person.id] = nil
+                state.selected[entry.person.id] = true
             else
-                state.deselected[entry.person.id] = true
+                state.selected[entry.person.id] = nil
             end
             UI.Refresh()
         end)
@@ -280,9 +371,22 @@ local function build(page)
         row.check:SetChecked(entry.selected and not entry.blocked)
         row.check:SetEnabled(not entry.blocked)
 
-        local label = string.format("%s %s", ns.TIER_ICON[tier] or "", ns.ShortName(entry.person.name))
-        if entry.online and entry.online.bnet then label = label .. " |cff82c5ffBN|r" end
-        row.name:SetText(ns.Colorize(label, char and ns.ClassColor(char.classFile)))
+        local full = char and char.name or entry.person.name
+        local label = (ns.TIER_ICON[tier] or "") .. " "
+            .. ns.NameWithRealm(full, char and ns.ClassColor(char.classFile))
+            .. ns.SimTag(entry.person)
+        -- Absence first. `entry.online` is nil for anyone whose status we cannot
+        -- see, which is most of the roster -- testing it last means the branches
+        -- above it index a nil.
+        if not entry.online then
+            -- Not "offline": we genuinely cannot see.
+            label = label .. " |cff7f7f7fstatus unknown|r"
+        elseif entry.online.busy then
+            label = label .. " |cffd9a441" .. tostring(entry.online.busy) .. "|r"
+        elseif entry.online.bnet then
+            label = label .. " |cff82c5ffBN|r"
+        end
+        row.name:SetText(label)
 
         if entry.blocked then
             row.msg:SetText("|cffff8080blocked:|r " .. entry.blocked)
@@ -326,11 +430,17 @@ local function build(page)
 
         local blocked = 0
         for _, e in ipairs(entries) do if e.blocked then blocked = blocked + 1 end end
-        summary:SetText(string.format("%d online match%s  -  |cff9b7fd6%d selected|r%s",
-            #entries, #entries == 1 and "" or "es", selectedCount(),
-            blocked > 0 and string.format("  -  %d blocked", blocked) or ""))
+        local known = 0
+        for _, e in ipairs(entries) do if e.online then known = known + 1 end end
 
-        sendBtn:SetText(ns.Sender.IsSending() and "Cancel" or ("Send to " .. selectedCount()))
+        summary:SetText(string.format("%d recipient%s (%d confirmed online)  -  "
+            .. "|cff9b7fd6%d selected|r%s%s",
+            #entries, #entries == 1 and "" or "s", known, selectedCount(),
+            blocked > 0 and string.format("  -  %d blocked", blocked) or "",
+            echoing() and "   |cffd9a441ECHO MODE: nothing is actually sent|r" or ""))
+
+        sendBtn:SetText(ns.Sender.IsSending() and "Cancel"
+            or ((echoing() and "Echo to " or "Send to ") .. selectedCount()))
         status:SetText(state.status or "")
 
         local log = {}
@@ -338,9 +448,47 @@ local function build(page)
         for i = #src, math.max(1, #src - 60), -1 do log[#log + 1] = src[i] end
         logList:SetData(log)
 
-        empty:SetText(#entries == 0
-            and "nobody online matches. try a different group, or |cffffff00/pugdebug roster|r for test data."
-            or "")
+        -- How far there is to scroll: the widest line, less the space it has.
+        -- Measured off a real row so the font and size match what is drawn.
+        local widest = 0
+        for _, row in ipairs(logList.rows or {}) do
+            if row:IsShown() and row.text then
+                local w = row.text.GetUnboundedStringWidth
+                    and row.text:GetUnboundedStringWidth()
+                    or row.text:GetStringWidth()
+                if w and w > widest then widest = w end
+            end
+        end
+        logScroll:SetRange(widest - (logList:GetWidth() - 40))
+
+        -- An empty list has several possible causes and they need different
+        -- fixes, so say which one happened rather than one generic line.
+        if #entries > 0 then
+            empty:SetText("")
+        else
+            local s = ns.Filters.lastSkipped or {}
+            local bits = {}
+            if (s.considered or 0) == 0 then
+                bits[#bits + 1] = "no one in the roster matches this filter"
+            else
+                bits[#bits + 1] = string.format("%d people considered", s.considered)
+            end
+            if (s.busy or 0) > 0 then
+                bits[#bits + 1] = string.format("|cffd9a441%d busy in a dungeon, raid or "
+                    .. "battleground|r (Options -> Messaging to include them)", s.busy)
+            end
+            if (s.self or 0) > 0 then
+                bits[#bits + 1] = string.format("%d of your own characters", s.self)
+            end
+            if (s.offline or 0) > 0 then
+                bits[#bits + 1] = string.format("|cffd9a441%d not confirmed online|r "
+                    .. "(Options -> Messaging to offer them anyway)", s.offline)
+            end
+            if (s.nameless or 0) > 0 then
+                bits[#bits + 1] = string.format("%d with no character name", s.nameless)
+            end
+            empty:SetText(table.concat(bits, "\n"))
+        end
     end
 end
 
