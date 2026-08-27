@@ -4,13 +4,14 @@
 ## Author: Duane
 ## Version: @project-version@
 ## SavedVariables: PugRosterDB
+## IconTexture: Interface\AddOns\PugRoster\Media\PugRosterIcon
 ## X-License: MIT
 ## X-Category: Group Finder
 ## X-Website: https://github.com/duanebc/pugroster
 
 # The packager reads these to know where to upload; a missing one just skips
 # that host. Two hashes = a real TOC directive, one = an inert comment.
-# X-Curse-Project-ID: 000000
+## X-Curse-Project-ID: 1670548
 # X-Wago-ID: 000000
 # X-WoWI-ID: 00000
 
