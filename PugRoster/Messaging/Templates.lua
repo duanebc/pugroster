@@ -11,6 +11,15 @@
 --   {tier}        the tier I have them at
 --   {runs}        runs we have done together
 --   {me}          my own character name
+--
+-- The {key}/{dungeon}/{mykeylevel} group is always the keystone in my own bags.
+-- A template can also carry a key it is recruiting *for*, which is a different
+-- thing entirely -- "I have +12 Halls, want to run your +15 Dawnbreaker?" needs
+-- both in one sentence -- so that one gets its own group, stored on the template:
+--
+--   {keydungeon}  the dungeon this template is for
+--   {keylevel}    that key's level as "+15"
+--   {keyname}     the two together, "+15 Dawnbreaker"
 
 local ADDON, ns = ...
 
@@ -21,17 +30,26 @@ function Templates.List()
     return ns.db.templates
 end
 
-function Templates.Add(name, text)
+function Templates.Add(name, text, mapID, level)
     if not name or name == "" then return false end
-    table.insert(ns.db.templates, { name = name, text = text or "" })
+    table.insert(ns.db.templates, {
+        name = name, text = text or "", mapID = mapID, level = level,
+    })
     return true
 end
 
-function Templates.Update(index, name, text)
+-- `name` and `text` keep the "nil leaves it alone" contract callers rely on, but
+-- the key cannot: clearing the dungeon back to none is a thing you have to be
+-- able to do, and a nil-means-skip guard would make it unexpressible. So the key
+-- is always written, and a caller updating only the text passes the key it
+-- already had.
+function Templates.Update(index, name, text, mapID, level)
     local t = ns.db.templates[index]
     if not t then return false end
     if name then t.name = name end
     if text then t.text = text end
+    t.mapID = mapID
+    t.level = level
     return true
 end
 
@@ -77,6 +95,20 @@ function Templates.SenderContext()
     return ctx
 end
 
+-- The key a template is recruiting for. Unset parts stay empty strings so Expand
+-- falls through and leaves a visible {keydungeon} in the preview -- the same way
+-- a missing keystone leaves {dungeon} visible in SenderContext. A half-written
+-- sentence should look half-written before it is whispered at a real person, not
+-- read as a fluent line with a hole where the dungeon should be.
+function Templates.KeyContext(mapID, level)
+    local ctx = {
+        keydungeon = mapID and (ns.DungeonName(mapID) or "") or "",
+        keylevel   = level and ("+" .. level) or "",
+    }
+    ctx.keyname = (ctx.keylevel .. " " .. ctx.keydungeon):match("^%s*(.-)%s*$")
+    return ctx
+end
+
 function Templates.RecipientContext(person, char)
     local tier = ns.Roster.EffectiveTier(person)
     return {
@@ -102,6 +134,7 @@ function Templates.Expand(text, ...)
     end))
 end
 
-function Templates.Preview(text, person, char)
-    return Templates.Expand(text, Templates.RecipientContext(person, char), Templates.SenderContext())
+function Templates.Preview(text, person, char, keyCtx)
+    return Templates.Expand(text, Templates.RecipientContext(person, char),
+                            Templates.SenderContext(), keyCtx)
 end

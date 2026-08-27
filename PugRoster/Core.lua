@@ -259,9 +259,20 @@ end
 -- so every caller goes through here instead of picking one by hand.
 --------------------------------------------------------------------------------
 
+-- The one place that reads the client's season map table. Feature-detected and
+-- pcall'd the way Roster/Model.lua does it, and deliberately not cached: the
+-- table is empty until the first CHALLENGE_MODE_MAPS_UPDATE after login, so an
+-- empty answer is "not yet", not "no dungeons", and holding on to one would
+-- leave anything built from it blank for the rest of the session.
+local function challengeMaps()
+    if not (C_ChallengeMode and C_ChallengeMode.GetMapTable) then return {} end
+    local ok, maps = pcall(C_ChallengeMode.GetMapTable)
+    if not ok or type(maps) ~= "table" then return {} end
+    return maps
+end
+
 local function isChallengeMap(mapID)
-    if not (C_ChallengeMode and C_ChallengeMode.GetMapTable) then return false end
-    for _, id in ipairs(C_ChallengeMode.GetMapTable() or {}) do
+    for _, id in ipairs(challengeMaps()) do
         if id == mapID then return true end
     end
     return false
@@ -291,6 +302,23 @@ end
 function ns.DungeonName(mapID)
     if not (mapID and C_ChallengeMode and C_ChallengeMode.GetMapUIInfo) then return nil end
     return (C_ChallengeMode.GetMapUIInfo(mapID))
+end
+
+-- This season's Mythic+ dungeons as an ordered { { id =, name = }, ... } list,
+-- sorted by name so a menu built from it does not reshuffle between sessions.
+-- Maps the client has not named yet are left out rather than shown as an ID --
+-- an unnamed entry in a dropdown is unpickable in practice.
+--
+-- Returns an empty list before the map table loads; callers show their own
+-- "not loaded yet" rather than an empty menu that looks like a bug.
+function ns.SeasonDungeons()
+    local out = {}
+    for _, id in ipairs(challengeMaps()) do
+        local name = ns.DungeonName(id)
+        if name then out[#out + 1] = { id = id, name = name } end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
 end
 
 -- "Name-Realm" from name/realm parts. The realm is always included so

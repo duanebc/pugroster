@@ -67,7 +67,10 @@ end
 -- a send went to three of eight.
 --------------------------------------------------------------------------------
 
-function Sender.BuildRecipients(filter, templateText)
+-- `keyCtx` is the template's own key, from ns.Templates.KeyContext. It is built
+-- once by the caller rather than here because the Send tab lets you override the
+-- saved dungeon and level without saving, and only the caller knows that.
+function Sender.BuildRecipients(filter, templateText, keyCtx)
     local senderCtx = ns.Templates.SenderContext()
     local out = {}
 
@@ -84,7 +87,7 @@ function Sender.BuildRecipients(filter, templateText)
             -- full one you have to remember to trim.
             selected  = false,
             message   = ns.Templates.Expand(templateText or "",
-                            ns.Templates.RecipientContext(person, char), senderCtx),
+                            ns.Templates.RecipientContext(person, char), senderCtx, keyCtx),
         }
     end
 
@@ -246,7 +249,7 @@ function Sender.SendBatch(entries, progressCallback)
 end
 
 -- One-off send from the roster panel. Obeys the same guardrails.
-function Sender.SendTo(person, text)
+function Sender.SendTo(person, text, keyCtx)
     if not person then return false, "unknown person" end
     local blocked = Sender.BlockReason(person)
     if blocked then return false, blocked end
@@ -259,7 +262,7 @@ function Sender.SendTo(person, text)
             local entry = { person = person, character = char, online = info }
             local channel, target = chooseChannel(entry)
             local message = ns.Templates.Expand(text, ns.Templates.RecipientContext(person, char),
-                                                ns.Templates.SenderContext())
+                                                ns.Templates.SenderContext(), keyCtx)
             if dispatch(channel, target, message) then
                 recordSend(entry, channel, target, message)
                 ns.Replies.Watch(person)

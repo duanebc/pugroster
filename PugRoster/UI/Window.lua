@@ -191,13 +191,28 @@ local function ensureMenu()
     return menu
 end
 
-function UI.ShowMenu(anchor, entries, width)
+-- `maxRows` wraps a long list into columns instead of one strip taller than the
+-- screen: a +2..+30 level list is thirty entries, and SetClampedToScreen would
+-- only slide that up over the window rather than make it readable. Callers that
+-- leave it unset get the single column they have always had.
+function UI.ShowMenu(anchor, entries, width, maxRows)
     local m = ensureMenu()
     width = width or 160
 
-    for _, row in ipairs(m.rows) do row:Hide() end
+    -- Rows are pooled across every menu in the addon, and a point set on the
+    -- previous opening is additive rather than replaced. A single column got away
+    -- with it because entry i always landed at the same height; with columns in
+    -- play, entry i moves, so the old points have to go.
+    for _, row in ipairs(m.rows) do row:ClearAllPoints(); row:Hide() end
 
-    local y = -4
+    local GAP      = 4
+    local colWidth = width - 8
+    local rows    = math.max(1, maxRows and math.min(maxRows, #entries) or #entries)
+    local columns = math.max(1, math.ceil(#entries / rows))
+    -- Spread evenly once the column count is known: thirty entries at fourteen
+    -- rows is three columns, and 10/10/10 reads better than 14/14/2.
+    rows = math.ceil(#entries / columns)
+
     for i, entry in ipairs(entries) do
         local row = m.rows[i]
         if not row then
@@ -211,18 +226,20 @@ function UI.ShowMenu(anchor, entries, width)
             row.hl:SetColorTexture(unpack(COLORS.hover))
             m.rows[i] = row
         end
-        row:SetPoint("TOPLEFT", 4, y)
-        row:SetWidth(width - 8)
+        -- Column-major: the list reads top to bottom, then wraps to the next
+        -- column, so +2..+16 is one column and +17..+30 the next.
+        local col = math.floor((i - 1) / rows)
+        row:SetPoint("TOPLEFT", 4 + col * (colWidth + GAP), -4 - ((i - 1) % rows) * 20)
+        row:SetWidth(colWidth)
         row.label:SetText((entry.checked and "|cff9b7fd6*|r " or "") .. (entry.text or ""))
         row:SetScript("OnClick", function()
             m:Hide()
             if entry.func then entry.func() end
         end)
         row:Show()
-        y = y - 20
     end
 
-    m:SetSize(width, math.abs(y) + 4)
+    m:SetSize(8 + columns * colWidth + (columns - 1) * GAP, rows * 20 + 8)
     m:ClearAllPoints()
     m:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
     m:Show()
@@ -233,10 +250,10 @@ function UI.HideMenu()
 end
 
 -- A button that opens a menu and shows the current value.
-function UI.MenuButton(parent, width, getLabel, buildEntries)
+function UI.MenuButton(parent, width, getLabel, buildEntries, maxRows)
     local b = UI.Button(parent, getLabel and getLabel() or "", width)
     b:SetScript("OnClick", function(self)
-        UI.ShowMenu(self, buildEntries() or {}, width)
+        UI.ShowMenu(self, buildEntries() or {}, width, maxRows)
     end)
     b.Refresh = function(self) if getLabel then self:SetText(getLabel()) end end
     return b
