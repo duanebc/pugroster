@@ -5,7 +5,7 @@ it in step with `README.md` and `CHANGELOG.md`; the packager uploads the
 changelog as each release's notes, but the description below is set once on the
 project page and only changes when the addon does.
 
-Project avatar: `images/pugrater/pugrater-logo-400.png`.
+Project avatar: `images/pugroster/pugroster-logo-400.png`.
 
 CurseForge's description editor takes Markdown -- pick the Markdown tab rather
 than the rich text one, or the headings arrive as literal hashes.
@@ -14,15 +14,14 @@ than the rich text one, or the headings arrive as literal hashes.
 
 ## Summary (one line)
 
-Rate the players you run Mythic+ with, organise them into a tagged roster, and
-message them by tag.
+Build a roster of the players you run Mythic+ with, rated on your own runs and
+tagged however you like, then message them by tag.
 
 ## Summary (CurseForge, 256 character limit)
 
-PugRater remembers who you had a good key with. It rates the players in every
-Mythic+ run you do, files them into a roster you can tag and filter, and whispers
-a whole group at once -- so you invite off your own runs, not somebody else's
-score.
+PugRoster remembers who you had a good key with. Every Mythic+ run you do builds
+a roster of the players in it, rated on what actually happened, tagged and
+filterable -- so you invite off your own runs, not somebody else's score.
 
 ---
 
@@ -30,25 +29,25 @@ score.
 
 <!-- Everything below this line is the description. Paste it verbatim. -->
 
-# PugRater
+# PugRoster
 
 > **You timed a +12 on Tuesday with a warrior who kicked everything and a healer
 > who never let the tank drop. By Thursday you cannot remember either name.**
 
-PugRater remembers. It records every Mythic+ run you do, rates the four people
+PugRoster remembers. It records every Mythic+ run you do, rates the four people
 you ran it with on what actually happened in the key, and files them into a
 roster you can tag, filter and message. The next time you are short a healer, you
 are inviting somebody *you* had a good run with -- not the highest number on a
 list a website computed.
 
-It is a memory for your own runs. That is the whole idea.
+A roster built out of your own runs. That is the whole idea.
 
 ---
 
 ## Captures every key, automatically
 
 You do not have to press anything. From the moment the key starts to the moment
-it completes, PugRater writes down:
+it completes, PugRoster writes down:
 
 - **The run** -- dungeon, key level, affixes, elapsed against par, timer result
   and upgrade level.
@@ -95,7 +94,7 @@ the problem with inviting off somebody else's score.
 ## A roster of people, not a list of names
 
 **Characters link under a person.** The rogue you met last week and the alt he
-brings tonight are the same player, and PugRater knows it. Battle.net friends
+brings tonight are the same player, and PugRoster knows it. Battle.net friends
 link themselves wherever the friends list exposes the mapping; anyone else can be
 linked by hand in two clicks.
 
@@ -105,7 +104,7 @@ worth bringing along -- and a roster made only of strangers would have been
 missing them.
 
 **Tag people the way you actually think about them.** Relationship, play style,
-availability, voice, or any category you invent. Alongside those, PugRater
+availability, voice, or any category you invent. Alongside those, PugRoster
 derives tags that stay current on their own: role, spec, item level bracket,
 Raider.IO bracket, computed tier.
 
@@ -125,7 +124,7 @@ Landairsea on different realms is a normal thing to have in a roster.
 ## Message the whole group at once
 
 Pick a saved group -- or a filter you just built, without having to save it
-first. PugRater shows you **the exact message every single recipient will get**,
+first. PugRoster shows you **the exact message every single recipient will get**,
 fully expanded, before anything is sent. Untick anyone you have changed your mind
 about. Then send, with a configurable stagger between whispers.
 
@@ -145,7 +144,7 @@ A messaging addon has to be trustworthy before it is useful. So:
 
 - **Nothing is selected by default.** You add recipients; you never have to
   remember to remove them.
-- **Nothing sends on its own.** There is no automatic messaging in PugRater. No
+- **Nothing sends on its own.** There is no automatic messaging in PugRoster. No
   auto-reply, no auto-invite, no background whispering. Every message is one you
   pressed a button for.
 - **Cooldowns are enforced in the send path**, not in the UI -- so a manual
@@ -181,7 +180,7 @@ guessing at who said yes.
 
 | Command | What it does |
 | --- | --- |
-| `/pugrater` or `/pr` | open the roster |
+| `/pugroster` or `/pr` | open the roster |
 | `/pr history` | run history browser |
 | `/pr send` | messaging panel |
 | `/pr options` | settings, tags, data tools |
@@ -194,8 +193,8 @@ guessing at who said yes.
 
 **Does this replace Raider.IO?**
 No, and it does not try to. Raider.IO tells you how somebody performs against the
-whole playerbase. PugRater tells you how they went *with you*. Run both --
-PugRater reads Raider.IO's scores when it is installed and shows them alongside
+whole playerbase. PugRoster tells you how they went *with you*. Run both --
+PugRoster reads Raider.IO's scores when it is installed and shows them alongside
 its own tiers, and it deliberately does not duplicate the Raider.IO tooltip.
 
 **Does it work on Midnight?**
@@ -217,7 +216,7 @@ identically without it, and always will.
 
 **What does it do to my SavedVariables?**
 There is a real storage ceiling, 5 MB by default and configurable. It is
-*measured* rather than estimated -- PugRater sums the bytes the SavedVariables
+*measured* rather than estimated -- PugRoster sums the bytes the SavedVariables
 writer will actually emit, because a limit is only a limit if the number beside
 it is true. Over budget it sheds captured chat first, then old world and dummy
 fights, then old exported keys, and tells you what went. Your roster, tags,
@@ -234,7 +233,7 @@ Through your addon manager, or download the zip and unpack it into
 `World of Warcraft/_retail_/Interface/AddOns/`. Type `/pr` and run a key.
 
 **Source, issues and full documentation:**
-https://github.com/duanebc/pugrater
+https://github.com/duanebc/pugroster
 
 *MIT licensed.*
 
