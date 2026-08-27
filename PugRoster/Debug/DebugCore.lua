@@ -71,7 +71,7 @@ function Debug.OnlineIndex()       return Debug._onlineIndex end
 --------------------------------------------------------------------------------
 
 function Debug.WipeAll()
-    PugRaterDB = nil
+    PugRosterDB = nil
     Debug.Print("database cleared. |cffffff00/reload|r to reinitialise.")
 end
 

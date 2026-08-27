@@ -171,7 +171,7 @@ end
 local menu
 local function ensureMenu()
     if menu then return menu end
-    menu = CreateFrame("Frame", "PugRaterMenu", UIParent)
+    menu = CreateFrame("Frame", "PugRosterMenu", UIParent)
     menu:SetFrameStrata("FULLSCREEN_DIALOG")
     menu:SetClampedToScreen(true)
     UI.Backdrop(menu, { 0.08, 0.08, 0.11, 0.98 })
@@ -287,7 +287,7 @@ function UI.ScrollList(parent, rowHeight, createRow, updateRow)
     -- FauxScrollFrame_Update looks its scroll bar up by global name
     -- ("$parentScrollBar"), so the frame itself has to be named.
     scrollSerial = scrollSerial + 1
-    local scroll = CreateFrame("ScrollFrame", "PugRaterScrollList" .. scrollSerial, list, "FauxScrollFrameTemplate")
+    local scroll = CreateFrame("ScrollFrame", "PugRosterScrollList" .. scrollSerial, list, "FauxScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 0, 0)
     scroll:SetPoint("BOTTOMRIGHT", -26, 0)
 
@@ -435,7 +435,7 @@ end
 local function buildWindow()
     if frame then return frame end
 
-    frame = CreateFrame("Frame", "PugRaterFrame", UIParent)
+    frame = CreateFrame("Frame", "PugRosterFrame", UIParent)
     -- 1000 rather than 920: the roster shows Name-Realm, and a realm name needs
     -- the room. Clamped to screen, so a small display still gets a usable frame.
     frame:SetSize(1000, 580)
@@ -471,7 +471,7 @@ local function buildWindow()
         if not InCombatLockdown() then self:SetPropagateKeyboardInput(true) end
     end)
 
-    local title = UI.Label(frame, "PugRater", 15, COLORS.accent)
+    local title = UI.Label(frame, "PugRoster", 15, COLORS.accent)
     title:SetPoint("TOPLEFT", UI.PAD, -10)
 
     local version = UI.Label(frame, ns.addonVersion, 10, { 0.5, 0.5, 0.55 })

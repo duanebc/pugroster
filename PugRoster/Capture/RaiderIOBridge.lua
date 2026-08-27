@@ -1,6 +1,6 @@
 -- Capture/RaiderIOBridge.lua -- live Mythic+ scores from the RaiderIO addon.
 --
--- Scores used to come only from PugRater_Lookup.lua, which the Python companion
+-- Scores used to come only from PugRoster_Lookup.lua, which the Python companion
 -- writes -- and the companion does not exist yet, which is why every RIO cell in
 -- the roster was blank. The RaiderIO addon, if the player has it, already holds
 -- the same numbers for anyone it has data on, so ask it directly.

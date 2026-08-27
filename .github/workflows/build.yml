@@ -42,7 +42,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: steps.pkg.outputs.found == 'true'
         with:
-          name: PugRater-build
+          name: PugRoster-build
           path: .release/*.zip
           # The packager writes the zip into .release/, and upload-artifact has
           # skipped anything under a dot-directory since v4.4 unless asked not to.

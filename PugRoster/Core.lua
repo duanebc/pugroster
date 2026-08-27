@@ -1,11 +1,11 @@
 -- Core.lua -- addon namespace, saved variables, event dispatch, shared helpers.
 --
--- Everything else in PugRater hangs off the `ns` table created here, which is
--- also published as the global `PugRater` so the optional Debug/ folder (and
+-- Everything else in PugRoster hangs off the `ns` table created here, which is
+-- also published as the global `PugRoster` so the optional Debug/ folder (and
 -- anyone poking at it from /run) can feature-detect against it.
 
 local ADDON, ns = ...
-_G.PugRater = ns
+_G.PugRoster = ns
 
 ns.name = ADDON
 ns.addonVersion = C_AddOns and C_AddOns.GetAddOnMetadata(ADDON, "Version") or "dev"
@@ -147,7 +147,7 @@ ns.copyDefaults = copyDefaults
 function ns.Print(...)
     local parts = {}
     for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
-    DEFAULT_CHAT_FRAME:AddMessage("|cff8f5fd6PugRater|r " .. table.concat(parts, " "))
+    DEFAULT_CHAT_FRAME:AddMessage("|cff8f5fd6PugRoster|r " .. table.concat(parts, " "))
 end
 
 function ns.Round(v, places)
@@ -166,7 +166,7 @@ end
 -- event, which means the handler runs at a frame boundary rather than inside the
 -- offending call -- a traceback taken there shows the event dispatch and nothing
 -- useful. What does survive is a record of what we were doing just before, so
--- every place PugRater is entered from Blizzard's side drops a breadcrumb here
+-- every place PugRoster is entered from Blizzard's side drops a breadcrumb here
 -- and the debug panel prints the last few next to each refusal.
 --
 -- One table write on a 24-slot ring; cheap enough to leave on always, and the
@@ -494,7 +494,7 @@ end
 --------------------------------------------------------------------------------
 
 local handlers = {}
-local frame = CreateFrame("Frame", "PugRaterEventFrame")
+local frame = CreateFrame("Frame", "PugRosterEventFrame")
 ns.eventFrame = frame
 
 function ns.RegisterEvent(event, fn)
@@ -529,8 +529,8 @@ end)
 local DB_VERSION = 1
 
 local function initDB()
-    PugRaterDB = PugRaterDB or {}
-    local db = PugRaterDB
+    PugRosterDB = PugRosterDB or {}
+    local db = PugRosterDB
 
     db.version      = db.version or DB_VERSION
     db.settings     = db.settings or {}
@@ -619,7 +619,7 @@ end)
 --------------------------------------------------------------------------------
 -- Forbidden-action reporting
 --
--- "PugRater has been blocked from an action only available to the Blizzard UI"
+-- "PugRoster has been blocked from an action only available to the Blizzard UI"
 -- is a popup with no detail in it. ADDON_ACTION_FORBIDDEN carries the name of
 -- the refused function, which is the one fact worth having -- but an addon
 -- cannot register for that event. Trying to is itself a forbidden action, so a
@@ -671,9 +671,9 @@ end
 -- Slash commands
 --------------------------------------------------------------------------------
 
-SLASH_PUGRATER1 = "/pugrater"
-SLASH_PUGRATER2 = "/pr"
-SlashCmdList.PUGRATER = function(msg)
+SLASH_PUGROSTER1 = "/pugroster"
+SLASH_PUGROSTER2 = "/pr"
+SlashCmdList.PUGROSTER = function(msg)
     local cmd, rest = (msg or ""):match("^(%S*)%s*(.-)%s*$")
     cmd = (cmd or ""):lower()
 
@@ -691,7 +691,7 @@ SlashCmdList.PUGRATER = function(msg)
     elseif cmd == "note" then
         local who, note = rest:match("^(%S+)%s*(.-)$")
         if not who or who == "" then
-            ns.Print("usage: /pugrater note <name> <text>")
+            ns.Print("usage: /pugroster note <name> <text>")
         else
             local ok = ns.Roster.SetNoteByName(who, note)
             ns.Print(ok and ("note saved for " .. who) or ("no one known named " .. who))

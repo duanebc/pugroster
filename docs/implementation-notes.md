@@ -1,7 +1,7 @@
 # Implementation notes
 
-The development log for PugRater's first implementation, built from
-`docs/pug-rater-plan.md`. It covers phases 1-6 of that plan; the Python
+The development log for PugRoster's first implementation, built from
+`docs/pug-roster-plan.md`. It covers phases 1-6 of that plan; the Python
 companion (phase 3's out-of-game half) is not written yet.
 
 This is kept apart from `CHANGELOG.md`, which the packager ships as the release
@@ -215,7 +215,7 @@ fixing -- grouped by module rather than by release.
 - Outcome-dominant provisional tiers, scaled by key level, weighted by role,
   decayed by season, gated on sample size.
 - Per-run breakdown exposed in the roster panel and `/pugdebug tier`.
-- Reader for the companion-generated `PugRater_Lookup.lua`; refined tiers and
+- Reader for the companion-generated `PugRoster_Lookup.lua`; refined tiers and
   Raider.IO scores are preferred when present, and its absence is a no-op.
 
 ### Roster
@@ -231,7 +231,7 @@ fixing -- grouped by module rather than by release.
   Options -> Messaging.
 
 - Mythic+ scores come from the RaiderIO addon when it is installed, falling back
-  to the companion snapshot. Previously the only source was `PugRater_Lookup.lua`,
+  to the companion snapshot. Previously the only source was `PugRoster_Lookup.lua`,
   which the unwritten companion produces -- so every RIO cell read "-".
 - A second score column, LS-RIO, carrying last season's score in RaiderIO's own
   previous-season colour, since the two seasons are not on the same scale.
@@ -326,7 +326,7 @@ fixing -- grouped by module rather than by release.
 
 - Item level, current score and last season's score on the unit tooltip, all on
   plain mouseover. The full Raider.IO block is RaiderIO's own and is reached by
-  turning off its "Enable Profile Modifier" setting -- PugRater does not
+  turning off its "Enable Profile Modifier" setting -- PugRoster does not
   duplicate it.
 - `DAMAGER` reads as `DPS` in the roster and run history, through one
   `ns.RoleLabel` so the two cannot drift.
@@ -385,7 +385,7 @@ fixing -- grouped by module rather than by release.
   test data" deliberately keeps working while it is off, so seeded records can
   always be cleared.
 - Forbidden actions are captured with the refused function name and a breadcrumb
-  trail of what PugRater was doing just before, shown in a copyable box on the
+  trail of what PugRoster was doing just before, shown in a copyable box on the
   Debug tab. The popup names the addon and nothing else. A traceback would not
   help -- the event is dispatched at a frame boundary rather than inside the
   offending call -- so `ns.Trace` drops a marker at every point Blizzard enters

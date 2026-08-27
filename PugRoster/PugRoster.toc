@@ -1,12 +1,12 @@
 ## Interface: 120007
-## Title: PugRater
-## Notes: Rate the players you run Mythic+ with, organise them into a tagged roster, and message them by tag
+## Title: PugRoster
+## Notes: Build a roster of the players you run Mythic+ with, rated on your own runs and tagged however you like, then message them by tag
 ## Author: Duane
 ## Version: @project-version@
-## SavedVariables: PugRaterDB
+## SavedVariables: PugRosterDB
 ## X-License: MIT
 ## X-Category: Group Finder
-## X-Website: https://github.com/duanebc/pugrater
+## X-Website: https://github.com/duanebc/pugroster
 
 # The packager reads these to know where to upload; a missing one just skips
 # that host. Two hashes = a real TOC directive, one = an inert comment.
@@ -47,7 +47,7 @@ UI\LFGBadge.lua
 
 # Companion-generated enrichment. The checked-in stub is an empty table, so the
 # addon behaves identically whether or not the Python side has ever run.
-PugRater_Lookup.lua
+PugRoster_Lookup.lua
 
 #@debug@
 # Development-only simulation suite. The packager strips this block and .pkgmeta

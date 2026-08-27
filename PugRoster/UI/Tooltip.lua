@@ -38,7 +38,7 @@ function Tooltip.Decorate(tip, guid)
 
     tip:AddLine(" ")
     tip:AddDoubleLine(
-        "|cff8f5fd6PugRater|r " .. tier .. (source == "override" and "*" or ""),
+        "|cff8f5fd6PugRoster|r " .. tier .. (source == "override" and "*" or ""),
         runs > 0 and string.format("%d run%s together", runs, runs == 1 and "" or "s") or "",
         color.r, color.g, color.b, 0.7, 0.7, 0.76)
 

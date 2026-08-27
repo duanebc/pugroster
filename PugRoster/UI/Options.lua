@@ -176,7 +176,7 @@ local function build(page)
         if ns.Lookup.IsPresent() and ns.Lookup.GeneratedAt() then
             lookup = "companion data from " .. ns.FormatDate(ns.Lookup.GeneratedAt())
         else
-            lookup = "no companion data yet (run |cffffff00pugrater all|r)"
+            lookup = "no companion data yet (run |cffffff00pugroster all|r)"
         end
 
         -- Whether the combat log is reachable at all is not a preference, but it

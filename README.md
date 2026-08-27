@@ -1,6 +1,6 @@
-<img src="images/pugrater/pugrater-logo-400.png" alt="" width="128" align="right">
+<img src="images/pugroster/pugroster-logo-400.png" alt="" width="128" align="right">
 
-# PugRater
+# PugRoster
 
 Records every Mythic+ run you do, rates the players you ran with, organises them
 into a taggable roster, and lets you message groups of them by tag. The point is
@@ -58,7 +58,7 @@ CurseForge, Wago, or WoWInterface via your addon manager, or grab the zip from
 
 | Command | What it does |
 | --- | --- |
-| `/pugrater` or `/pr` | open the roster |
+| `/pugroster` or `/pr` | open the roster |
 | `/pr history` | run history browser |
 | `/pr send` | messaging panel |
 | `/pr options` | settings, tags, data tools |
@@ -67,7 +67,7 @@ CurseForge, Wago, or WoWInterface via your addon manager, or grab the zip from
 
 ## Development builds
 
-Everything under `PugRater/Debug/` exists so the addon can be developed without
+Everything under `PugRoster/Debug/` exists so the addon can be developed without
 running a 30-minute key per iteration. The release packager strips the folder
 (`.pkgmeta` `ignore` plus a `#@debug@` block in the `.toc`), so shipped builds
 contain no debug code at all rather than debug code that is switched off.
@@ -100,7 +100,7 @@ one run of capture.
 
 ### Debug mode
 
-`/pugdebug off`, or the checkbox at the top of the Debug tab, makes PugRater
+`/pugdebug off`, or the checkbox at the top of the Debug tab, makes PugRoster
 behave exactly as a released build does. It is not a UI-level lie: production
 code reaches debug functionality only through `if ns.Debug and ns.Debug.X then`,
 so switching off clears the seams themselves -- `EchoSend`, `EchoInvite` and the
@@ -108,7 +108,7 @@ fake online index all go nil, and the real send path, the real friends list and
 the real block rules are what run. Slash commands other than `on`/`off` refuse
 while it is off.
 
-The flag lives at `PugRaterDB.debugEnabled` rather than in `settings`, so no
+The flag lives at `PugRosterDB.debugEnabled` rather than in `settings`, so no
 debug key ever appears in the production defaults table. Absent means on.
 
 ### The `debug` flag
@@ -148,15 +148,15 @@ every attach, link and touch.
 
 The Python companion (`companion/`) is not built yet. When it lands it reads
 SavedVariables into SQLite, enriches with the Blizzard and Raider.IO APIs,
-recomputes refined tiers over the full history, and writes `PugRater_Lookup.lua`
+recomputes refined tiers over the full history, and writes `PugRoster_Lookup.lua`
 back into the addon folder. The addon already reads that file and prefers refined
-tiers over its own when they are present -- `PugRater_Lookup.lua` ships as an
+tiers over its own when they are present -- `PugRoster_Lookup.lua` ships as an
 empty stub, and its absence never breaks anything.
 
 ## Layout
 
 ```
-PugRater/
+PugRoster/
   Core.lua            namespace, saved variables, event dispatch
   Housekeeping.lua    storage budget, pruning, database maintenance
   Capture/            run lifecycle, combat log, chat, inspect, Details bridge
@@ -165,7 +165,7 @@ PugRater/
   Messaging/          templates, send queue, reply tracking
   UI/                 window, roster, history, send, options, tooltip, badges
   Debug/              simulation suite and its panel (stripped from releases)
-  PugRater_Lookup.lua companion-generated enrichment; ships as an empty stub
+  PugRoster_Lookup.lua companion-generated enrichment; ships as an empty stub
 ```
 
 ## License

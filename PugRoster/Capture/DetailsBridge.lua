@@ -655,7 +655,7 @@ end
 
 -- Returns an array of lines. An array rather than one blob so callers print it
 -- without having to split on newlines.
--- The meters PugRater actually reads. Everything else is noise in a report.
+-- The meters PugRoster actually reads. Everything else is noise in a report.
 local REPORTED_METERS = {
     DamageDone = true, HealingDone = true,
     Interrupts = true, Dispels = true, Deaths = true,

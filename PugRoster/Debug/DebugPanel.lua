@@ -42,7 +42,7 @@ function panel.CaptureText()
     if #log == 0 then
         return "Nothing captured yet.\n\n"
             .. "Reproduce the popup. Each refusal is logged here with the "
-            .. "function that was refused and what PugRater was doing in the "
+            .. "function that was refused and what PugRoster was doing in the "
             .. "moments before it, newest first."
     end
 
@@ -117,7 +117,7 @@ local function build(page)
         function(v) Debug.SetEnabled(v) end)
     master:SetPoint("TOPLEFT", 14, -12)
     local masterHint = hint(left, master,
-        "Off makes PugRater behave exactly as a released build does: no echo, no "
+        "Off makes PugRoster behave exactly as a released build does: no echo, no "
         .. "fake friends list, no /pugdebug commands, simulated people blocked "
         .. "from real sends.")
 

@@ -155,7 +155,7 @@ end
 --
 -- Midnight (interface 120000+, the pass that restricted a swathe of addon APIs)
 -- makes COMBAT_LOG_EVENT_UNFILTERED off limits: registering it is a protected
--- action, the client refuses it, and that refusal is the "PugRater has been
+-- action, the client refuses it, and that refusal is the "PugRoster has been
 -- blocked from an action only available to the Blizzard UI" popup, once per
 -- login. A blocked action is not a Lua error, so there is nothing to pcall and
 -- no way to recover after the fact -- the only fix is not to make the call.

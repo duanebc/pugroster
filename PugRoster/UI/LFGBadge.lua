@@ -12,7 +12,7 @@
 --
 -- That last point is the taint rule this file lives by. Inviting an applicant
 -- is a protected call, so anything we leave behind on an applicant row can come
--- back as "PugRater has been blocked from an action only available to the
+-- back as "PugRoster has been blocked from an action only available to the
 -- Blizzard UI" the moment the player clicks Invite. So: no textures created on
 -- Blizzard frames, no fields written to their frame tables, no scripts hooked
 -- on them. Row -> overlay lives in a weak side table here instead, and the
@@ -48,7 +48,7 @@ local function overlayTooltip(self)
     if not p then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     local t = ns.Roster.EffectiveTier(p)
-    GameTooltip:AddLine("|cff8f5fd6PugRater|r " .. t)
+    GameTooltip:AddLine("|cff8f5fd6PugRoster|r " .. t)
     GameTooltip:AddLine(string.format("%d runs together", ns.Roster.RunsTogether(p)), 0.7, 0.7, 0.7)
     if (p.note or "") ~= "" then
         GameTooltip:AddLine('"' .. p.note:gsub("\n", " ") .. '"', 0.75, 0.75, 0.6, true)

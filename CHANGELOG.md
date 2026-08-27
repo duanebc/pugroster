@@ -68,7 +68,7 @@ First public release.
 
 ### On Midnight (interface 120000+)
 
-The combat log is closed to addons, so some of what PugRater records comes from
+The combat log is closed to addons, so some of what PugRoster records comes from
 elsewhere or not at all. Options reports which is in effect on your client.
 
 - Damage and healing come from `C_DamageMeter`, Blizzard's server-side meter,
@@ -91,5 +91,5 @@ elsewhere or not at all. Options reports which is in effect on your client.
 ### Not written yet
 
 - The Python companion, which would refine tiers offline and fill in Raider.IO
-  scores and same-person links. The generated `PugRater_Lookup.lua` ships as an
+  scores and same-person links. The generated `PugRoster_Lookup.lua` ships as an
   empty stub, so the addon behaves identically until it exists.

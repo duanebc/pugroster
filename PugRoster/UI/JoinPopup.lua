@@ -26,7 +26,7 @@ end
 local function ensureFrame()
     if frame then return frame end
 
-    frame = CreateFrame("Frame", "PugRaterToast", UIParent)
+    frame = CreateFrame("Frame", "PugRosterToast", UIParent)
     frame:SetSize(280, 64)
     frame:SetPoint("TOP", UIParent, "TOP", 0, -180)
     frame:SetFrameStrata("HIGH")

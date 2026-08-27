@@ -1,6 +1,6 @@
 -- Rating/Lookup.lua -- read side of the companion-generated data file.
 --
--- PugRater_Lookup.lua is written by the Python companion and loaded from the
+-- PugRoster_Lookup.lua is written by the Python companion and loaded from the
 -- .toc. It is pure enrichment: refined tiers, Raider.IO scores for this and the
 -- previous season, and person links the companion worked out offline. Its
 -- absence must never break the addon, so every read goes through here.
@@ -10,12 +10,12 @@ local ADDON, ns = ...
 local Lookup = {}
 ns.Lookup = Lookup
 
--- The read has to stay lazy: PugRater_Lookup.lua is loaded after this file, so
+-- The read has to stay lazy: PugRoster_Lookup.lua is loaded after this file, so
 -- there is nothing to cache at file scope. Worth knowing that reading a global
 -- an addon created taints the calling stack -- harmless here, but it is why the
 -- combat-log registration is deliberately not made from the OnInit chain.
 local function data()
-    local t = _G.PugRaterLookup
+    local t = _G.PugRosterLookup
     return type(t) == "table" and t or nil
 end
 
