@@ -14,14 +14,12 @@ Project avatar: `images/pugrater/pugrater-logo-400.png`.
 Rate the players you run Mythic+ with, organise them into a tagged roster, and
 message them by tag.
 
-## Summary (short paragraph)
+## Summary (CurseForge, 256 character limit)
 
-PugRater remembers who you had a good key with. It records every Mythic+ run you
-do, rates the four people you ran it with on what actually happened, files them
-into a roster you can tag and filter, and lets you whisper a whole group of them
-at once when you are looking to fill. The point is to build your own list of
-players worth running with, from your own runs, rather than inviting off a score
-somebody else computed.
+PugRater remembers who you had a good key with. It rates the players in every
+Mythic+ run you do, files them into a roster you can tag and filter, and whispers
+a whole group at once -- so you invite off your own runs, not somebody else's
+score.
 
 ## Description (project page body)
 
