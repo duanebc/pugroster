@@ -33,11 +33,19 @@ First public release.
   Names carry their realm everywhere they are shown.
 - **A filter builder over both kinds of tag** -- `role = healer AND ilvl >= 640
   AND tag = push` -- saveable as a named group, and usable from the Send tab
-  without saving it first.
+  without saving it first. Plus a search box for when you just want one person by
+  name, matching their alts as well as the name you filed them under.
+- **Every session together is counted, but only keys are rated.** The Runs column
+  reads `2 +3`: two keystone runs, and three other times you grouped up --
+  normal dungeons, delves, raids. Only the first number can move a tier, because
+  a raid boss has no business rating a Mythic+ player. Open-world pulls and
+  target dummies are not company and do not count.
 - **Messaging by group.** Pick a saved group or a live filter, preview the exact
   expanded message for every recipient, uncheck anyone, and send with a
   configurable stagger. Templates support `{name} {key} {dungeon} {mykeylevel}
-  {tier} {runs} {me}`. Battle.net whisper when the account is known, character
+  {tier} {runs} {me}`, and can carry a key they are recruiting *for* -- pick a
+  dungeon and level and write `{keylevel} {keydungeon}`, which stays distinct
+  from the keystone actually in your bags. Battle.net whisper when the account is known, character
   whisper otherwise. A per-person cooldown, a `do-not-message` tag and a sent log
   are enforced in the send path rather than the UI. Replies are tracked verbatim
   with manual yes/no marking and one-click invite.

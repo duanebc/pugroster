@@ -239,8 +239,12 @@ local function build(page)
             if self.obs then
                 local char = ns.Roster.GetCharacter(self.obs.guid)
                 if char then
-                    ns.Print(string.format("%s -- score %.2f over %d runs (%s)",
-                        char.name or "?", char.score or 0, char.runs or 0, char.autoTier or "Neutral"))
+                    ns.Print(string.format("%s -- score %.2f over %d runs%s (%s)",
+                        char.name or "?", char.score or 0, char.runs or 0,
+                        (char.grouped or 0) > 0
+                            and string.format(" and %d other session%s", char.grouped,
+                                              char.grouped == 1 and "" or "s") or "",
+                        char.autoTier or "Neutral"))
                 end
             end
         end)

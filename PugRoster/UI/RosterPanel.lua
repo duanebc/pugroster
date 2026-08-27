@@ -27,9 +27,24 @@ local state = {
     sortKey = "tier",
     sortAsc = false,
     filter  = nil,
+    search  = "",        -- free-text name match, narrows whatever the filter left
     selected = nil,      -- personId
     builder = { field = "tag", op = "has", value = "" },
 }
+
+-- Substring match on the person and on every character they are known by, so
+-- searching a alt's name finds the person you filed them under. Case-insensitive
+-- and plain: a name with a "-" in it is the normal case here, not a pattern.
+local function matchesSearch(person)
+    local needle = (state.search or ""):lower()
+    if needle == "" then return true end
+    if (person.name or ""):lower():find(needle, 1, true) then return true end
+    for guid in pairs(person.characters or {}) do
+        local c = ns.Roster.GetCharacter(guid)
+        if c and (c.name or ""):lower():find(needle, 1, true) then return true end
+    end
+    return false
+end
 
 -- The Send tab borrows this, so a filter built here can be messaged from there.
 -- Declared after `state`: defined above it, the body would resolve `state` as a
@@ -62,7 +77,8 @@ local function rowFor(person)
         rioPrev = rioPrev or 0,
         tier   = tier,
         tierSource = source,
-        runs   = ns.Roster.RunsTogether(person),
+        runs    = ns.Roster.RunsTogether(person),
+        grouped = ns.Roster.TimesGrouped(person),
         last   = ns.Roster.LastPlayedWith(person) or 0,
     }
 end
@@ -72,7 +88,7 @@ local function buildRows()
     for _, person in ipairs(ns.Filters.Apply(state.filter)) do
         -- You are in your own runs, so you end up in your own roster. Rating
         -- yourself against yourself is meaningless, so leave yourself out.
-        if not ns.Roster.IsSelf(person) then
+        if not ns.Roster.IsSelf(person) and matchesSearch(person) then
             rows[#rows + 1] = rowFor(person)
         end
     end
@@ -248,6 +264,29 @@ local function buildFilterBar(parent, page)
     saveBox:Hide()
     page.saveBox = saveBox
 
+    -- Search sits on the right, away from the condition builder: it is a way to
+    -- find one person, not another clause in the filter. It narrows whatever the
+    -- filter has already left, which with the default empty filter means it
+    -- searches everyone.
+    local searchBox = UI.EditBox(bar, 170, function() UI.Refresh() end)
+    searchBox:SetPoint("TOPRIGHT", 0, 0)
+    searchBox:SetScript("OnTextChanged", function(self, user)
+        if not user then return end
+        state.search = self:GetText() or ""
+        UI.Refresh()
+    end)
+    -- Escape clears rather than merely dropping focus, so a search you are done
+    -- with does not quietly keep hiding the rest of the roster.
+    searchBox:SetScript("OnEscapePressed", function(self)
+        self:SetText("")
+        state.search = ""
+        self:ClearFocus()
+        UI.Refresh()
+    end)
+
+    local searchLabel = UI.Label(bar, "Search", 11, { 0.65, 0.62, 0.72 })
+    searchLabel:SetPoint("RIGHT", searchBox, "LEFT", -6, 0)
+
     local desc = UI.Label(bar, "", 11, { 0.65, 0.62, 0.72 })
     desc:SetPoint("TOPLEFT", fieldBtn, "BOTTOMLEFT", 2, -6)
     desc:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
@@ -261,8 +300,16 @@ local function buildFilterBar(parent, page)
         addBtn:ClearAllPoints()
         addBtn:SetPoint("LEFT", useMenu and valueBtn or valueBox, "RIGHT", 4, 0)
 
-        local n = #ns.Filters.Apply(state.filter)
-        desc:SetText(string.format("|cff9b7fd6%d|r shown  -  %s", n, ns.Filters.Describe(state.filter)))
+        -- Counted after the search, because the search is what the eye is
+        -- actually looking at: a filter matching 40 people while one name is
+        -- typed should not claim 40 are shown.
+        local n = 0
+        for _, person in ipairs(ns.Filters.Apply(state.filter)) do
+            if matchesSearch(person) then n = n + 1 end
+        end
+        desc:SetText(string.format("|cff9b7fd6%d|r shown  -  %s%s", n,
+            ns.Filters.Describe(state.filter),
+            (state.search or "") ~= "" and ("  -  matching \"" .. state.search .. "\"") or ""))
     end
 
     return bar
@@ -484,7 +531,19 @@ local function buildDetail(parent)
             end
             why:SetText(table.concat(out, "\n"))
         else
-            why:SetText("no runs recorded yet")
+            -- "No runs" is only half the story when there is shared history that
+            -- simply is not keystone history, and the difference is the whole
+            -- reason the tier has not moved.
+            local person  = ns.Roster.GetPerson(state.selected)
+            local grouped = person and ns.Roster.TimesGrouped(person) or 0
+            if grouped > 0 then
+                why:SetText(string.format(
+                    "no keystone runs yet -- but %d session%s together in other content\n"
+                    .. "(normal dungeons, delves and raids are recorded, but never rate anyone)",
+                    grouped, grouped == 1 and "" or "s"))
+            else
+                why:SetText("no runs recorded yet")
+            end
         end
     end
 
@@ -567,7 +626,12 @@ local function build(page)
             row.cells.rioPrev:SetText("-")
         end
         row.cells.tier:SetText(ns.TierText(item.tier) .. (item.tierSource == "override" and "*" or ""))
-        row.cells.runs:SetText(tostring(item.runs))
+        -- Keys and everything else, side by side: "0 +2" is somebody you have
+        -- run two normal dungeons and no keys with. Only the first number feeds
+        -- the tier, so they cannot share one figure.
+        row.cells.runs:SetText(tostring(item.runs)
+            .. ((item.grouped or 0) > 0
+                and ns.Colorize(" +" .. item.grouped, { r = 0.55, g = 0.55, b = 0.62 }) or ""))
         row.cells.last:SetText(item.last > 0 and ns.TimeAgo(item.last) or "-")
 
         UI.LayoutChips(row.chipArea, UI.ChipList(item.person),
@@ -591,7 +655,9 @@ local function build(page)
         detail.Refresh()
         if #rows == 0 then
             empty:SetText(next(ns.db.characters)
-                and "no one matches this filter."
+                and ((state.search or "") ~= ""
+                    and string.format("nobody matching \"%s\".", state.search)
+                    or "no one matches this filter.")
                 or "no runs recorded yet -- finish a key (or try /pugdebug seed 20).")
         else
             empty:SetText("")

@@ -276,6 +276,19 @@ function Roster.RunsTogether(person)
     return total
 end
 
+-- Sessions together that were not keystone runs -- normal dungeons, delves,
+-- raids. Kept separate from RunsTogether on purpose: this number is for showing
+-- people, never for rating them.
+function Roster.TimesGrouped(person)
+    if not person then return 0 end
+    local total = 0
+    for guid in pairs(person.characters) do
+        local c = Roster.GetCharacter(guid)
+        if c then total = total + (c.grouped or 0) end
+    end
+    return total
+end
+
 function Roster.LastPlayedWith(person)
     if not person then return nil end
     local latest

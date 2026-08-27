@@ -238,6 +238,42 @@ local function aggregate()
     return out
 end
 
+-- Shared sessions that were not keystone runs: the normal dungeon you walked
+-- into together, the delve, the raid. Counted apart from the rating and never
+-- fed into it -- db.fights is precisely the content a Mythic+ tier must not be
+-- moved by (Capture/FightTracker.lua) -- but "0 runs" beside somebody you just
+-- did three dungeons with reads as lost data, and that is worth saying out loud.
+--
+-- Open-world pulls and target dummies do not count as having gone somewhere
+-- together: standing near someone in the world is not a session, and a dummy is
+-- not company at all.
+local NOT_GROUPING = { world = true, dummy = true }
+
+local function aggregateGrouped()
+    local out = {}
+    for _, fight in ipairs(ns.db.fights or {}) do
+        if not NOT_GROUPING[fight.content] then
+            -- Fight observations are keyed by whatever the fight involved, and
+            -- that includes Creature-* GUIDs. db.runs never carries them, so the
+            -- keystone pass above has never had to care; walking fights does.
+            -- Without this, EnsureCharacter would file a boss in your roster.
+            for guid in pairs(fight.observations or {}) do
+                if type(guid) == "string" and guid:sub(1, 7) == "Player-" then
+                    local g = out[guid]
+                    if not g then
+                        g = { sessions = 0, lastSeen = 0 }
+                        out[guid] = g
+                    end
+                    g.sessions = g.sessions + 1
+                    local at = fight.endedAt or fight.startedAt or 0
+                    if at > g.lastSeen then g.lastSeen = at end
+                end
+            end
+        end
+    end
+    return out
+end
+
 function Rating.TierForScore(score, runs)
     local minRuns = ns.settings.minRunsForTier or 2
 
@@ -276,6 +312,23 @@ function Rating.RecomputeAll()
             end
             touched = touched + 1
         end
+    end
+
+    -- Second pass, and it cannot fold into the loop above: somebody you have
+    -- only ever run normal dungeons with has no entry in `aggs` at all, which is
+    -- exactly the case that was reading as zero.
+    local grouped = aggregateGrouped()
+    for guid, g in pairs(grouped) do
+        local char = ns.Roster.EnsureCharacter(guid)
+        if char and g.lastSeen > (char.lastSeen or 0) then
+            char.lastSeen = g.lastSeen
+        end
+    end
+    -- Written for every character rather than only the ones with sessions:
+    -- Housekeeping prunes old fights, and a count that could only ever go up
+    -- would keep reporting sessions whose records are gone.
+    for guid, char in pairs(ns.db.characters) do
+        char.grouped = grouped[guid] and grouped[guid].sessions or nil
     end
 
     ns.db.lastRated = ns.Now()
