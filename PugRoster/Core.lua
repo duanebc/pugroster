@@ -722,6 +722,19 @@ SlashCmdList.PUGROSTER = function(msg)
     elseif cmd == "rate" then
         local n = ns.Rating.RecomputeAll()
         ns.Print("recomputed provisional tiers for", n, "characters.")
+    elseif cmd == "unmerge" then
+        -- Repairs databases damaged by the old link sync, which could stamp one
+        -- account onto a character belonging to another and chain unrelated
+        -- people into a single person.
+        local split, moved = ns.Roster.RebuildPersonsFromAccounts()
+        if split == 0 then
+            ns.Print("no person holds characters from more than one Battle.net "
+                .. "account -- nothing to repair.")
+        else
+            ns.Print(string.format("split %d merged %s, regrouping %d characters "
+                .. "by Battle.net account. Manual links were lost with them.",
+                split, split == 1 and "person" or "persons", moved))
+        end
     elseif cmd == "note" then
         local who, note = rest:match("^(%S+)%s*(.-)$")
         if not who or who == "" then

@@ -712,6 +712,76 @@ function Roster.OnlineIndex()
     return index
 end
 
+-- Split persons that hold characters from more than one Battle.net account.
+--
+-- The link sync used to stamp an account onto any character whose name matched,
+-- overwriting whatever was there, so one name collision chained two accounts
+-- together and the next sync chained those to a third. It ends with most of the
+-- roster inside a single person -- 158 characters across dozens of accounts in
+-- the database that prompted this -- which quietly ruins everything downstream:
+-- runs-together, tiers, the history filter, who a toast names.
+--
+-- The account ID is the authority, because it comes from the server rather than
+-- from us. Characters that carry one are regrouped so that one account is one
+-- person; characters with no account at all cannot be attributed to anybody and
+-- are given a person each, which is what they would have had before any linking.
+--
+-- Manual links are lost. There is no way to tell one apart from a bad automatic
+-- one after the fact, and leaving the merges in place is worse.
+function Roster.RebuildPersonsFromAccounts()
+    local split, freed = 0, 0
+
+    -- Which persons are actually mixed. A person whose characters all share one
+    -- account -- or carry none -- is left exactly as it is.
+    local suspect = {}
+    for _, person in pairs(ns.db.persons) do
+        local accounts, without = {}, 0
+        local n = 0
+        for guid in pairs(person.characters or {}) do
+            local c = Roster.GetCharacter(guid)
+            local acct = c and c.bnetAccountID
+            if acct then
+                if not accounts[acct] then accounts[acct] = true; n = n + 1 end
+            else
+                without = without + 1
+            end
+        end
+        if n > 1 or (n >= 1 and without > 0) then suspect[person.id] = true end
+    end
+
+    for personId in pairs(suspect) do
+        local person = Roster.GetPerson(personId)
+        if person then
+            split = split + 1
+            local byAccount = {}
+            for guid in pairs(person.characters) do
+                local c = Roster.GetCharacter(guid)
+                local acct = c and c.bnetAccountID
+                if acct then
+                    -- First character of each account keeps a person of its own;
+                    -- the rest of that account joins it.
+                    if byAccount[acct] then
+                        person.characters[guid] = nil
+                        Roster.AttachToPerson(guid, byAccount[acct])
+                    else
+                        person.characters[guid] = nil
+                        local p = Roster.AttachToPerson(guid)
+                        byAccount[acct] = p and p.id
+                    end
+                else
+                    person.characters[guid] = nil
+                    Roster.AttachToPerson(guid)
+                end
+                freed = freed + 1
+            end
+            if not next(person.characters) then ns.db.persons[person.id] = nil end
+        end
+    end
+
+    if freed > 0 and ns.Rating and ns.Rating.RecomputeAll then ns.Rating.RecomputeAll() end
+    return split, freed
+end
+
 -- Fold whatever the friends list currently exposes back into our characters:
 -- records the BNet account ID, and links two characters that share one.
 function Roster.SyncBNetLinks()
@@ -723,9 +793,25 @@ function Roster.SyncBNetLinks()
         local acct = C_BattleNet and C_BattleNet.GetFriendAccountInfo(i)
         local game = acct and acct.gameAccountInfo
         if game and game.isOnline and game.clientProgram == BNET_CLIENT_WOW and game.characterName then
-            local full = ns.FullName(game.characterName, game.realmName and game.realmName:gsub("%s+", ""))
+            -- Only when the friends list actually told us the realm. Without it
+            -- ns.FullName falls back to *our* realm, so a friend on an unknown
+            -- realm becomes "Name-OurRealm" and can collide with a completely
+            -- different character of that name -- which then gets stamped with
+            -- this account and, in the next loop, linked to everybody else on it.
+            local realm = game.realmName and game.realmName:gsub("%s+", "")
+            local full = (realm and realm ~= "")
+                and ns.FullName(game.characterName, realm) or nil
             for guid, char in pairs(ns.db.characters) do
-                if char.name == full then
+                -- `full` can be nil when a name is withheld, and `char.name` can
+                -- be nil on a stub; nil == nil would then match every one of them
+                -- at once and merge the lot.
+                if full and char.name == full
+                    -- Never reassign a character that already belongs to another
+                    -- account. Two accounts claiming one name is a collision, not
+                    -- a correction, and overwriting is how unrelated people ended
+                    -- up merged into a single person.
+                    and (char.bnetAccountID == nil
+                         or char.bnetAccountID == acct.bnetAccountID) then
                     char.bnetAccountID = acct.bnetAccountID
                     local prev = byAccount[acct.bnetAccountID]
                     if prev and prev ~= guid then
