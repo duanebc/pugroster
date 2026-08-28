@@ -32,6 +32,10 @@ ns.DefProbe = DefProbe
 
 local WATCH_SECONDS = 20
 
+-- Aura readings kept per unit before the scan gives up on that unit. Enough to
+-- settle whether it is legible; far short of what a dungeon would otherwise cost.
+local AURA_SAMPLE_CAP = 40
+
 local function line(fmt, ...)
     ns.Print("   " .. (select("#", ...) > 0 and string.format(fmt, ...) or fmt))
 end
@@ -118,6 +122,36 @@ local function spellName(id)
     return nil
 end
 
+-- The per-unit and per-spell bookkeeping, without the event counting. Auras need
+-- this half on its own: one UNIT_AURA is one event but several aura slots worth
+-- of readings, and counting each slot as an event would make the totals lie.
+local function record(b, unit, id, secret)
+    local u = b.units[unit]
+    if not u then
+        u = { unit = unit, events = 0, readable = 0, secret = 0 }
+        b.units[unit] = u
+    end
+    u.events = u.events + 1
+    if secret then
+        u.secret = u.secret + 1
+        b.secret = b.secret + 1
+    elseif id then
+        u.readable = u.readable + 1
+        b.readable = b.readable + 1
+        if not b.sample then
+            b.sample = string.format("%s -> %s", tostring(unit), tostring(id))
+        end
+        local s = b.spells[id]
+        if not s then
+            s = { id = id, name = spellName(id), count = 0, units = {} }
+            b.spells[id] = s
+            b.spellCount = b.spellCount + 1
+        end
+        s.count = s.count + 1
+        s.units[unit] = (s.units[unit] or 0) + 1
+    end
+end
+
 local function note(bucket, unit, id, secret)
     local b = seen[bucket]
     b.events = b.events + 1
@@ -166,24 +200,26 @@ local function onEvent(_, event, unit, arg2, arg3)
         note("cast", unit, ns.IsSecret(spellID) and nil or spellID, ns.IsSecret(spellID))
 
     elseif event == "UNIT_AURA" then
-        if not unitIsGroup(unit) then
-            seen.aura.events = seen.aura.events + 1
-            return
-        end
         seen.aura.events = seen.aura.events + 1
+        if not unitIsGroup(unit) then return end
         seen.aura.group = seen.aura.group + 1
-        -- One read is enough to learn whether aura data is legible at all.
-        local aura = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
-            and C_UnitAuras.GetAuraDataByIndex(unit, 1, "HELPFUL")
-        if type(aura) == "table" then
+
+        -- Slot 1 alone told us auras were readable without telling us whose, and
+        -- whose is now the entire question. Scan several slots, because a
+        -- defensive is rarely the first buff on anybody.
+        --
+        -- Capped per unit: a dungeon fires this fifteen thousand times, and forty
+        -- readings from a unit settle whether that unit is legible. Past that the
+        -- scan is cost with no answer attached.
+        local u = seen.aura.units[unit]
+        if u and u.events >= AURA_SAMPLE_CAP then return end
+        if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return end
+
+        for idx = 1, 8 do
+            local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, idx, "HELPFUL")
+            if not ok or type(aura) ~= "table" then break end
             local id = aura.spellId
-            if ns.IsSecret(id) then
-                seen.aura.secret = seen.aura.secret + 1
-            elseif id then
-                seen.aura.readable = seen.aura.readable + 1
-                seen.aura.sample = seen.aura.sample
-                    or string.format("%s has %s", tostring(unit), tostring(id))
-            end
+            record(seen.aura, unit, ns.IsSecret(id) and nil or id, ns.IsSecret(id))
         end
     end
 end
@@ -320,16 +356,39 @@ local function report()
     end
 
     -- The verdict, so the answer is not left as an exercise.
-    local verdict
-    if seen.cast.readable > 0 and seen.cast.group > 0 then
-        verdict = "spellcast works -- a spell list can count casts"
-    elseif seen.cast.group > 0 then
-        verdict = "spellcast fires for the group but the ids are secret"
-    else
-        verdict = "no usable spellcast data"
+    -- Judged on units other than `player` alone. Your own casts are always
+    -- readable and prove nothing about anybody else, and counting them made an
+    -- earlier run report that a spell list would work when in fact every one of
+    -- 246 party casts had come back secret.
+    local function othersReadable(b)
+        local read, secret = 0, 0
+        for unit, u in pairs(b.units) do
+            if unit ~= "player" then
+                read = read + u.readable
+                secret = secret + u.secret
+            end
+        end
+        return read, secret
     end
-    if seen.aura.readable > 0 then
-        verdict = verdict .. "; UNIT_AURA readable as fallback"
+
+    local verdict
+    local castRead, castSecret = othersReadable(seen.cast)
+    if castRead > 0 then
+        verdict = "spellcast readable for groupmates -- a spell list can count casts"
+    elseif castSecret > 0 then
+        verdict = string.format(
+            "spellcast fires for groupmates but every id is secret (%d of them)", castSecret)
+    else
+        verdict = "no groupmate casts seen at all -- inconclusive, re-run while they cast"
+    end
+
+    local auraRead, auraSecret = othersReadable(seen.aura)
+    if auraRead > 0 then
+        verdict = verdict .. "; groupmate auras ARE readable -- use UNIT_AURA"
+    elseif auraSecret > 0 then
+        verdict = verdict .. string.format("; groupmate auras also secret (%d)", auraSecret)
+    else
+        verdict = verdict .. "; no groupmate auras read"
     end
 
     ns.Print("|cff8f5fd6verdict|r")
