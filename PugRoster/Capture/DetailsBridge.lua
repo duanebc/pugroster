@@ -256,8 +256,27 @@ function Bridge.Enrich(run, preferType)
     -- The server first. Details is a display layer over the same data and its
     -- containers have been empty on this client throughout, so it is the fallback
     -- now rather than the source.
-    local server, serverWhy = Bridge.ServerTotals(preferType)
-    if server then
+    -- Ask for the caller's preference, then the widest session, then each named
+    -- session type in turn -- taking the first that actually matches somebody in
+    -- this run rather than the first that merely returns data.
+    --
+    -- Fights ask for Current and are fine. A whole key asks for the widest
+    -- session, and a session can be the widest and still match nobody: sources
+    -- whose sourceGUID and name both come back secret are counted but cannot be
+    -- identified, so the totals look present and pair with no observation. When
+    -- that happens the narrower session is still worth asking before falling
+    -- through to Details, which has been empty on this client throughout.
+    local order = {}
+    if preferType then order[#order + 1] = preferType end
+    order[#order + 1] = false                                    -- widest
+    if preferType ~= "Current" then order[#order + 1] = "Current" end
+    if preferType ~= "Overall" then order[#order + 1] = "Overall" end
+
+    local serverWhy
+    for _, want in ipairs(order) do
+        local server, why = Bridge.ServerTotals(want or nil)
+        serverWhy = serverWhy or why
+        if server then
         local matched = 0
         for guid, obs in pairs(run.observations) do
             -- GUID first: the server hands back sourceGUID, and our observations
@@ -282,6 +301,7 @@ function Bridge.Enrich(run, preferType)
             run.detailsEnriched = true
             run.detailsSegment = "server meter"
             return true
+        end
         end
     end
 
@@ -521,6 +541,7 @@ function Bridge.ServerTotals(preferType)
     for id, name in pairs(Bridge.MeterTypeNames()) do meterIds[name] = id end
 
     Bridge.missingMeters = {}
+    Bridge.lastSources, Bridge.lastAnonymous = 0, 0
 
     -- Keyed by whichever identity the source carried; byName is a side index so
     -- an observation can be matched on either.
@@ -561,6 +582,15 @@ function Bridge.ServerTotals(preferType)
                     -- exact identity, where a name has to be reconciled against
                     -- realm suffixes.
                     local guid, name = key(source.sourceGUID), key(source.name)
+                    -- A source with neither identity readable is counted and then
+                    -- dropped: it can never be paired with an observation. Worth
+                    -- tallying, because "five sources, none identifiable" and
+                    -- "no sources at all" look identical from the outside and
+                    -- mean very different things.
+                    Bridge.lastSources = (Bridge.lastSources or 0) + 1
+                    if not (guid or name) then
+                        Bridge.lastAnonymous = (Bridge.lastAnonymous or 0) + 1
+                    end
                     if guid or name then
                         local r = rec(guid or name)
                         r.guid, r.name = guid or r.guid, name or r.name
@@ -583,7 +613,15 @@ function Bridge.ServerTotals(preferType)
         end
     end
 
-    if not found then return nil, "the server's sessions carry no readable values" end
+    if not found then
+        if (Bridge.lastAnonymous or 0) > 0 then
+            return nil, string.format(
+                "the server's sessions hold %d sources but %d have no readable "
+                .. "name or GUID, so none can be matched to a player",
+                Bridge.lastSources or 0, Bridge.lastAnonymous)
+        end
+        return nil, "the server's sessions carry no readable values"
+    end
     return out
 end
 
