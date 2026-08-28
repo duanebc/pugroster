@@ -309,7 +309,15 @@ function Bridge.Enrich(run, preferType)
         end
     end
 
-    local totals, source = Bridge.GetSegmentTotals()
+    -- pcall'd. Details is third-party code reading a client that withholds most
+    -- of what it wants, and an error in there was taking down the whole read --
+    -- including the server result we had already computed. It is the fallback;
+    -- it does not get to break the primary.
+    local gotTotals, totals, source = pcall(Bridge.GetSegmentTotals)
+    if not gotTotals then
+        return false, (serverWhy and (serverWhy .. " / ") or "")
+            .. "Details errored while reading: " .. tostring(totals)
+    end
     if not totals then
         return false, (serverWhy and (serverWhy .. " / ") or "") .. tostring(source)
     end
@@ -347,20 +355,35 @@ end
 -- can still be recovered while Details holds the segment in memory.
 function Bridge.Repull(run)
     if not run then return false, "no run selected" end
-    if not Bridge.IsAvailable() then
-        return false, ns.settings.useDetails and "Details is not loaded"
-            or "Details is switched off in Options"
-    end
 
+    -- No Details gate. Enrich reads C_DamageMeter first and falls back to
+    -- Details, and on this client the server meter is the only one that has ever
+    -- answered -- so refusing here because Details is absent turned down the
+    -- source that works on behalf of the one that does not. The gate is a
+    -- leftover from when Details was the source rather than the fallback.
+    --
+    -- The server is also the reason this is worth trying at all after a reload:
+    -- Details forgets its segments with the UI, the server's sessions do not.
+    -- The error itself, not a label for it. "Details refused the read" was
+    -- printed for every failure alike -- a Lua error inside Enrich, a withheld
+    -- server, and a clean no-match -- so the one message that should have named
+    -- the fault was the one that hid it.
     local ok, applied, why = pcall(Bridge.Enrich, run)
-    if not ok then return false, "Details refused the read" end
+    if not ok then return false, "error while reading: " .. tostring(applied) end
 
     if not applied then
         -- Print the diagnostic on the spot. This path has failed for several
         -- unrelated reasons in a row, each invisible from the outside, and a
         -- bare "it didn't work" costs a round trip every time.
-        ns.Print("|cffd9a441Details report follows -- this is what Details answered:|r")
+        ns.Print("|cffd9a441report follows -- this is what the server and Details answered:|r")
         for _, line in ipairs(Bridge.Report(run)) do ns.Print(line) end
+        -- The commonest cause by far, and the one whose fix is "walk out".
+        local locks = Bridge.ActiveLocks()
+        if #locks > 0 then
+            ns.Print("|cffd9a441" .. table.concat(locks, "+") .. " is still active|r"
+                .. " -- the server has not released these numbers yet. Leave the"
+                .. " dungeon and try again.")
+        end
         return false, why or "no match"
     end
 

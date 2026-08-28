@@ -337,8 +337,13 @@ function RunTracker.Finalize(run, result)
 
             -- Never fail quietly. A run filed with every stat at zero and no
             -- explanation is how this went unnoticed across several keys.
-            ns.Print("|cffd9a441could not read this run from Details:|r",
-                tostring(ok and why or "Details refused the read")
+            -- `ok and why or "..."` collapsed three different outcomes into one
+            -- sentence: a thrown error, a withheld server, and a clean no-match
+            -- all printed "Details refused the read". Name which actually
+            -- happened -- when the call errors, `applied` carries the message.
+            ns.Print("|cffd9a441could not read this run:|r",
+                tostring(not ok and ("error while reading: " .. tostring(applied))
+                    or why or "no source had numbers for these five players")
                 .. " Try |cffffff00Pull from Details|r on the History tab before "
                 .. "you reload -- Details forgets the run when you do.")
         end
