@@ -289,6 +289,24 @@ function Roster.TimesGrouped(person)
     return total
 end
 
+-- The best Raider.IO score anywhere on the account: every linked character,
+-- this season and last, whichever is highest.
+--
+-- The per-character score answers "how good is this character", which is not the
+-- question you ask when somebody brings an alt. Their main is what tells you
+-- what they can actually do, and last season counts because a player who pushed
+-- hard and has not started this one has not forgotten how.
+function Roster.BestRIO(person)
+    if not person then return 0 end
+    local best = 0
+    for guid in pairs(person.characters or {}) do
+        local current, previous = ns.Lookup.RIO(guid)
+        if (current or 0) > best then best = current end
+        if (previous or 0) > best then best = previous end
+    end
+    return best
+end
+
 function Roster.LastPlayedWith(person)
     if not person then return nil end
     local latest

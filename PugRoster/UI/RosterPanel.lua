@@ -9,18 +9,30 @@ ns.RosterPanel = panel
 local ROW_HEIGHT = 34
 local DETAIL_WIDTH = 300
 
+-- Rows a dropdown may use before it wraps into another column, and the most
+-- people the link picker will list at once. Past that it says how many it left
+-- out rather than drawing a menu taller than the screen and silently stopping
+-- somewhere in the Gs.
+local MENU_ROWS = 14
+local LINK_MAX  = 30
+
 -- Widths total under the list's ~584px so the last column is not clipped by the
 -- scrollbar. Name and Spec gave up the room the LS-RIO column needed.
 local COLUMNS = {
-    { key = "name",  label = "Name",  width = 175 },
-    { key = "role",  label = "Role",  width = 56 },
-    { key = "spec",  label = "Spec",  width = 74 },
+    { key = "name",  label = "Name",  width = 155 },
+    { key = "role",  label = "Role",  width = 48 },
+    { key = "spec",  label = "Spec",  width = 64 },
     { key = "ilvl",  label = "ilvl",  width = 42 },
+    -- Three scores, narrowest question first: this character now, this character
+    -- last season, and the best the whole account has managed in either. The
+    -- third is the one that tells you who you are actually talking to when
+    -- somebody brings an alt.
     { key = "rio",   label = "RIO",   width = 48 },
     { key = "rioPrev", label = "LS-RIO", width = 52 },
-    { key = "tier",  label = "Tier",  width = 62 },
+    { key = "mainRio", label = "M-RIO", width = 50 },
+    { key = "tier",  label = "Tier",  width = 58 },
     { key = "runs",  label = "Runs",  width = 42 },
-    { key = "last",  label = "Last",  width = 60 },
+    { key = "last",  label = "Last",  width = 52 },
 }
 
 local state = {
@@ -28,6 +40,9 @@ local state = {
     sortAsc = false,
     filter  = nil,
     search  = "",        -- free-text name match, narrows whatever the filter left
+    linkSearch = "",     -- narrows the "Same person as..." picker, which is
+                         -- otherwise every person you have ever met
+
     selected = nil,      -- personId
     builder = { field = "tag", op = "has", value = "" },
 }
@@ -35,8 +50,8 @@ local state = {
 -- Substring match on the person and on every character they are known by, so
 -- searching a alt's name finds the person you filed them under. Case-insensitive
 -- and plain: a name with a "-" in it is the normal case here, not a pattern.
-local function matchesSearch(person)
-    local needle = (state.search or ""):lower()
+local function personMatches(person, needle)
+    needle = (needle or ""):lower()
     if needle == "" then return true end
     if (person.name or ""):lower():find(needle, 1, true) then return true end
     for guid in pairs(person.characters or {}) do
@@ -44,6 +59,19 @@ local function matchesSearch(person)
         if c and (c.name or ""):lower():find(needle, 1, true) then return true end
     end
     return false
+end
+
+local function matchesSearch(person) return personMatches(person, state.search) end
+
+-- How a person reads in a picker: the name you know them by, and the character
+-- behind it when those differ. Someone whose person record never got a real name
+-- still shows their character, because "Person 24" identifies nobody.
+local function personLabel(person)
+    local c = ns.Roster.MainCharacter(person)
+    if not c then return person.name or "?" end
+    local short = ns.ShortName(c.name)
+    if (person.name or "") == short then return c.name end
+    return string.format("%s (%s)", person.name or "?", short)
 end
 
 -- The Send tab borrows this, so a filter built here can be messaged from there.
@@ -109,6 +137,7 @@ local function rowFor(person)
         ilvl   = char and char.ilvl or 0,
         rio     = rio or 0,
         rioPrev = rioPrev or 0,
+        mainRio = ns.Roster.BestRIO(person),
         tier   = tier,
         tierSource = source,
         runs    = ns.Roster.RunsTogether(person),
@@ -463,26 +492,63 @@ local function buildDetail(parent)
     friendBtn:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", -2, -6)
     friendBtn:SetHeight(18)
 
+    -- Linking used to offer every person you had ever met in one column. At 179
+    -- people that menu is 3,500px tall, so SetClampedToScreen showed roughly A
+    -- to G and there was no way to reach anyone further down the alphabet. It
+    -- needs narrowing before it is a list at all.
+    local linkBox = UI.EditBox(d, 266, function() UI.Refresh() end)
+    linkBox:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 0, -30)
+    linkBox:SetScript("OnTextChanged", function(self, user)
+        if not user then return end
+        state.linkSearch = self:GetText() or ""
+        UI.Refresh()
+    end)
+    linkBox:SetScript("OnEscapePressed", function(self)
+        self:SetText(""); state.linkSearch = ""; self:ClearFocus(); UI.Refresh()
+    end)
+    d.linkBox = linkBox
+
+    local linkHint = UI.Label(d, "type a name to narrow the list below", 10, { 0.5, 0.5, 0.58 })
+    linkHint:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 2, -54)
+
     local linkBtn = UI.MenuButton(d, 130, function() return "Same person as..." end, function()
         local person = ns.Roster.GetPerson(state.selected)
         local myChar = ns.Roster.MainCharacter(person)
         if not myChar then return {} end
-        local entries = {}
-        for _, other in ipairs(ns.Roster.AllPersons()) do
-            if other.id ~= person.id then
+
+        local needle = state.linkSearch or ""
+        local cands = {}
+        for _, other in ipairs(ns.Roster.AllPersons()) do   -- already sorted by name
+            if other.id ~= person.id and personMatches(other, needle) then
                 local oc = ns.Roster.MainCharacter(other)
-                if oc then
-                    entries[#entries + 1] = { text = other.name, func = function()
-                        ns.Roster.LinkCharacters(myChar.guid, oc.guid)
-                        UI.Refresh()
-                    end }
-                end
+                if oc then cands[#cands + 1] = { person = other, char = oc } end
             end
         end
-        if #entries == 0 then entries[1] = { text = "(nobody else known)" } end
+
+        local entries = {}
+        for i = 1, math.min(#cands, LINK_MAX) do
+            local cand = cands[i]
+            entries[#entries + 1] = { text = personLabel(cand.person), func = function()
+                ns.Roster.LinkCharacters(myChar.guid, cand.char.guid)
+                -- The filter was for finding this one person; keeping it would
+                -- silently narrow the next link too.
+                state.linkSearch = ""
+                UI.Refresh()
+            end }
+        end
+
+        if #cands > LINK_MAX then
+            entries[#entries + 1] = { text = string.format(
+                "|cff8a8a95%d more -- type a name to narrow|r", #cands - LINK_MAX) }
+        end
+        if #entries == 0 then
+            entries[1] = { text = needle ~= ""
+                and string.format("(nobody matching \"%s\")", needle)
+                or "(nobody else known)" }
+        end
         return entries
-    end)
-    linkBtn:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 0, -60)
+    end, MENU_ROWS)
+    linkBtn:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 0, -68)
 
     local unlinkBtn = UI.Button(d, "Unlink main", 130, function()
         local person = ns.Roster.GetPerson(state.selected)
@@ -525,7 +591,13 @@ local function buildDetail(parent)
             chars:SetText("")
             why:SetText("")
             note.editBox:SetText("")
+            if not d.linkBox:HasFocus() then d.linkBox:SetText(state.linkSearch or "") end
             return
+        end
+
+        -- Cleared when the selection changes, so the box has to follow it back.
+        if not d.linkBox:HasFocus() and d.linkBox:GetText() ~= (state.linkSearch or "") then
+            d.linkBox:SetText(state.linkSearch or "")
         end
 
         local char = ns.Roster.MainCharacter(person)
@@ -638,6 +710,9 @@ local function build(page)
 
         row:SetScript("OnClick", function(self)
             state.selected = self.item and self.item.person.id or nil
+            -- A link filter belongs to the person you were looking at, not to
+            -- the next one you click.
+            state.linkSearch = ""
             UI.Refresh()
         end)
         return row
@@ -658,6 +733,18 @@ local function build(page)
         else
             row.cells.rioPrev:SetText("-")
         end
+
+        -- Coloured on the current-season scale whichever season it came from:
+        -- it is one number answering "how high has this account been", and two
+        -- scales for one column would only invite reading it as two things.
+        if item.mainRio > 0 then
+            local c = ns.RaiderIOBridge.ScoreColor(item.mainRio)
+            local text = tostring(math.floor(item.mainRio))
+            row.cells.mainRio:SetText(c and ns.Colorize(text, c) or text)
+        else
+            row.cells.mainRio:SetText("-")
+        end
+
         row.cells.tier:SetText(ns.TierText(item.tier) .. (item.tierSource == "override" and "*" or ""))
         -- Keys and everything else, side by side: "0 +2" is somebody you have
         -- run two normal dungeons and no keys with. Only the first number feeds

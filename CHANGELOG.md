@@ -9,6 +9,15 @@
   the person and name the character second: `Sanlanesh as Nnkidu`. People with
   one character are unaffected, and a person with only a placeholder name still
   shows the character, because "Person 24 as Amycus" helps nobody.
+- **The "Same person as..." picker has a search.** It listed every person you had
+  ever met in one column -- 3,500 pixels of menu at 179 people, clamped to the
+  screen, so it stopped somewhere in the Gs and there was no way to reach anyone
+  further down the alphabet. Type a name to narrow it; past thirty matches it
+  says how many it is not showing rather than drawing a menu you cannot use.
+- **A main-RIO column.** The highest Raider.IO score anywhere on the account,
+  across every linked character and both this season and last, whichever is
+  higher. The per-character score answers how good a character is; this answers
+  who you are actually talking to when somebody brings an alt.
 
 ## v1.0.0 -- 2026-08-27
 
