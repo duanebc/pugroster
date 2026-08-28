@@ -18,6 +18,17 @@
   across every linked character and both this season and last, whichever is
   higher. The per-character score answers how good a character is; this answers
   who you are actually talking to when somebody brings an alt.
+- **The detail pane stops running off the bottom of the window.** The character
+  list was one label that grew with every alt, and the buttons, link row and tier
+  breakdown were all anchored beneath it -- so somebody with nine characters
+  pushed Message and History into Same-person-as, and the breakdown drew off the
+  bottom of the screen where it could not be reached. Characters and the
+  breakdown are now bounded lists that scroll, so the rest of the pane keeps its
+  place whatever a person has.
+- **Characters read as a table** -- name, item level and Raider.IO score in
+  columns, class-coloured, realm dimmed. Duplicates are gone: a character the
+  friends list knows about and a character a run recorded were two records for
+  one person, and both were listed, half of them blank.
 
 ## v1.0.0 -- 2026-08-27
 

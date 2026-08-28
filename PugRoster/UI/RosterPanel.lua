@@ -118,6 +118,44 @@ local function nameCell(item)
         .. "|cff7f7f7f as " .. short .. "|r"
 end
 
+-- The characters behind a person, deduplicated and ready to draw.
+--
+-- One character can hold two records: the Friend-<name>-<realm> stub the friends
+-- list import creates, and the real Player-* GUID a run records. They are the
+-- same character, and listing both is how the pane came to show nine rows for a
+-- man with five alts -- half of them blank, because only one record ever carries
+-- spec and item level. The fuller record wins.
+local function recordWeight(r)
+    return (r.classFile and 1 or 0) + (r.ilvl and 1 or 0)
+        + (r.spec and 1 or 0) + (r.rio and 1 or 0)
+end
+
+local function characterRows(person)
+    local byName = {}
+    for guid in pairs(person.characters or {}) do
+        local c = ns.Roster.GetCharacter(guid)
+        if c and c.name then
+            local rio = select(1, ns.Lookup.RIO(guid))
+            local row = {
+                name = c.name, classFile = c.classFile, spec = c.specName,
+                ilvl = c.ilvl, rio = rio and rio > 0 and math.floor(rio) or nil,
+            }
+            local prev = byName[c.name]
+            if not prev or recordWeight(row) > recordWeight(prev) then
+                byName[c.name] = row
+            end
+        end
+    end
+
+    local out = {}
+    for _, row in pairs(byName) do out[#out + 1] = row end
+    -- By name, not by the drawn string: the old list sorted text that had
+    -- already been wrapped in colour codes, so it was really sorting on escape
+    -- sequences and the order looked arbitrary.
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
 local function rowFor(person)
     local char = ns.Roster.MainCharacter(person)
     local tier, source = ns.Roster.EffectiveTier(person)
@@ -453,10 +491,53 @@ local function buildDetail(parent)
     local charsLabel = UI.Label(d, "Characters", 11, UI.COLORS.header)
     charsLabel:SetPoint("TOPLEFT", note, "BOTTOMLEFT", 0, -8)
 
-    local chars = UI.Label(d, "", 11, { 0.75, 0.75, 0.8 })
-    chars:SetPoint("TOPLEFT", charsLabel, "BOTTOMLEFT", 0, -4)
-    chars:SetWidth(DETAIL_WIDTH - 20)
-    chars:SetJustifyV("TOP")
+    -- A bounded list, not one growing label. The old version was a single
+    -- FontString that got taller with every alt, and friendBtn, the link row and
+    -- the tier breakdown were all anchored beneath it -- so a person with nine
+    -- characters pushed the buttons into each other and shoved the breakdown off
+    -- the bottom of the window entirely. Fixed height here makes everything
+    -- below it deterministic, and the list scrolls when there are more.
+    local CHAR_ROWS, CHAR_ROW_H = 4, 14
+    local CHAR_COLS = {
+        { key = "name", label = "name", x = 2,   width = 150, align = "LEFT"  },
+        { key = "ilvl", label = "ilvl", x = 154, width = 34,  align = "RIGHT" },
+        { key = "rio",  label = "rio",  x = 192, width = 46,  align = "RIGHT" },
+    }
+
+    local charsHeader = CreateFrame("Frame", nil, d)
+    charsHeader:SetPoint("TOPLEFT", charsLabel, "BOTTOMLEFT", 0, -2)
+    charsHeader:SetPoint("RIGHT", d, "RIGHT", -8, 0)
+    charsHeader:SetHeight(11)
+    for _, col in ipairs(CHAR_COLS) do
+        local fs = UI.Label(charsHeader, col.label, 9, { 0.5, 0.5, 0.58 })
+        fs:SetPoint("LEFT", col.x, 0)
+        fs:SetWidth(col.width)
+        fs:SetJustifyH(col.align)
+    end
+
+    local charsList = UI.ScrollList(d, CHAR_ROW_H, function(parent)
+        local row = UI.MakeRow(parent)
+        row.cells = {}
+        for _, col in ipairs(CHAR_COLS) do
+            local fs = UI.Label(row, "", 10)
+            fs:SetPoint("LEFT", col.x, 0)
+            fs:SetWidth(col.width)
+            fs:SetJustifyH(col.align)
+            fs:SetWordWrap(false)
+            row.cells[col.key] = fs
+        end
+        return row
+    end, function(row, item)
+        -- Class colour on the character half, realm dimmed behind it, the same
+        -- treatment the roster's own Name column gets.
+        row.cells.name:SetText(ns.NameWithRealm(item.name, ns.ClassColor(item.classFile)))
+        row.cells.ilvl:SetText(item.ilvl and tostring(item.ilvl) or "-")
+        row.cells.rio:SetText(item.rio and tostring(item.rio) or "-")
+    end)
+    charsList:SetPoint("TOPLEFT", charsHeader, "BOTTOMLEFT", 0, -2)
+    charsList:SetPoint("RIGHT", d, "RIGHT", -8, 0)
+    charsList:SetHeight(CHAR_ROWS * CHAR_ROW_H)
+    local chars = charsList   -- what the widgets below anchor to
 
     -- Adding a friend is what makes someone's online status visible, which is
     -- otherwise only knowable for Battle.net friends, character friends and
@@ -496,8 +577,12 @@ local function buildDetail(parent)
     -- people that menu is 3,500px tall, so SetClampedToScreen showed roughly A
     -- to G and there was no way to reach anyone further down the alphabet. It
     -- needs narrowing before it is a list at all.
-    local linkBox = UI.EditBox(d, 266, function() UI.Refresh() end)
-    linkBox:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 0, -30)
+    -- Shares the row with Add friend rather than taking one of its own: the pane
+    -- has to fit a note, the characters, two button rows and a tier breakdown
+    -- inside 500px, and every line this block spends is one the breakdown does
+    -- not get.
+    local linkBox = UI.EditBox(d, 170, function() UI.Refresh() end)
+    linkBox:SetPoint("LEFT", friendBtn, "RIGHT", 6, 0)
     linkBox:SetScript("OnTextChanged", function(self, user)
         if not user then return end
         state.linkSearch = self:GetText() or ""
@@ -508,8 +593,11 @@ local function buildDetail(parent)
     end)
     d.linkBox = linkBox
 
-    local linkHint = UI.Label(d, "type a name to narrow the list below", 10, { 0.5, 0.5, 0.58 })
-    linkHint:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 2, -54)
+    -- The hint sits inside the box rather than on a line below it, for the same
+    -- reason: no vertical budget. Hidden as soon as there is anything to read.
+    local linkHint = UI.Label(linkBox, "find someone to link...", 10, { 0.4, 0.4, 0.47 })
+    linkHint:SetPoint("LEFT", 6, 0)
+    d.linkHint = linkHint
 
     local linkBtn = UI.MenuButton(d, 130, function() return "Same person as..." end, function()
         local person = ns.Roster.GetPerson(state.selected)
@@ -548,7 +636,7 @@ local function buildDetail(parent)
         end
         return entries
     end, MENU_ROWS)
-    linkBtn:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 0, -68)
+    linkBtn:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", 0, -34)
 
     local unlinkBtn = UI.Button(d, "Unlink main", 130, function()
         local person = ns.Roster.GetPerson(state.selected)
@@ -560,10 +648,24 @@ local function buildDetail(parent)
     local whyLabel = UI.Label(d, "Why this tier", 11, UI.COLORS.header)
     whyLabel:SetPoint("TOPLEFT", linkBtn, "BOTTOMLEFT", 0, -10)
 
-    local why = UI.Label(d, "", 10, { 0.7, 0.7, 0.76 })
-    why:SetPoint("TOPLEFT", whyLabel, "BOTTOMLEFT", 0, -4)
-    why:SetWidth(DETAIL_WIDTH - 20)
-    why:SetJustifyV("TOP")
+    -- Bounded top and bottom so it can never grow past the Message row the way
+    -- it did as a plain label -- a breakdown of several runs simply drew off the
+    -- bottom of the window, where there was no way to reach it. Anchored above
+    -- the buttons by pixels rather than to msgBtn, which is built after this.
+    local whyList = UI.ScrollList(d, 12, function(parent)
+        local row = CreateFrame("Frame", nil, parent)
+        row.text = UI.Label(row, "", 10, { 0.7, 0.7, 0.76 })
+        row.text:SetPoint("LEFT", 2, 0)
+        row.text:SetPoint("RIGHT", -2, 0)
+        row.text:SetJustifyH("LEFT")
+        row.text:SetWordWrap(false)
+        return row
+    end, function(row, item)
+        row.text:SetText(tostring(item))
+    end)
+    whyList:SetPoint("TOPLEFT", whyLabel, "BOTTOMLEFT", 0, -4)
+    whyList:SetPoint("RIGHT", d, "RIGHT", -8, 0)
+    whyList:SetPoint("BOTTOM", d, "BOTTOM", 0, 40)
 
     local msgBtn = UI.Button(d, "Message", 90, function()
         local person = ns.Roster.GetPerson(state.selected)
@@ -588,10 +690,11 @@ local function buildDetail(parent)
         if not person then
             name:SetText("|cff6a6a75select someone|r")
             sub:SetText("")
-            chars:SetText("")
-            why:SetText("")
+            charsList:SetData({})
+            whyList:SetData({})
             note.editBox:SetText("")
             if not d.linkBox:HasFocus() then d.linkBox:SetText(state.linkSearch or "") end
+            d.linkHint:SetShown((d.linkBox:GetText() or "") == "")
             return
         end
 
@@ -599,6 +702,9 @@ local function buildDetail(parent)
         if not d.linkBox:HasFocus() and d.linkBox:GetText() ~= (state.linkSearch or "") then
             d.linkBox:SetText(state.linkSearch or "")
         end
+        -- Outside the focus guard: the placeholder has to disappear on the first
+        -- keystroke, which is exactly when the box does have focus.
+        d.linkHint:SetShown((d.linkBox:GetText() or "") == "")
 
         local char = ns.Roster.MainCharacter(person)
         name:SetText(ns.NameWithRealm(char and char.name or person.name,
@@ -612,43 +718,34 @@ local function buildDetail(parent)
             note.editBox:SetText(person.note or "")
         end
 
-        local lines = {}
-        for guid in pairs(person.characters) do
-            local c = ns.Roster.GetCharacter(guid)
-            if c then
-                local rio = select(1, ns.Lookup.RIO(guid))
-                lines[#lines + 1] = string.format("%s  %s%s%s",
-                    ns.Colorize(c.name or "?", ns.ClassColor(c.classFile)),
-                    c.specName or "",
-                    c.ilvl and (" " .. c.ilvl) or "",
-                    rio and rio > 0 and ("  rio " .. math.floor(rio)) or "")
-            end
-        end
-        table.sort(lines)
-        chars:SetText(table.concat(lines, "\n"))
+        charsList:SetData(characterRows(person))
 
         local breakdown = char and ns.Rating.Breakdown(char.guid)
         if breakdown and breakdown.runs > 0 then
             local out = { string.format("score %.2f over %d runs -> %s",
                 breakdown.score, breakdown.runs, breakdown.tier) }
-            for i = #breakdown.lines, math.max(1, #breakdown.lines - 3), -1 do
+            -- Every run, not the last four. The list scrolls now, so there is no
+            -- reason to hide the older ones -- newest first, since that is the
+            -- one you are asking about.
+            for i = #breakdown.lines, 1, -1 do
                 local line = breakdown.lines[i]
                 out[#out + 1] = string.format("  %s  %+.2f (w %.2f)", line.header, line.value, line.weight)
             end
-            why:SetText(table.concat(out, "\n"))
+            whyList:SetData(out)
         else
             -- "No runs" is only half the story when there is shared history that
             -- simply is not keystone history, and the difference is the whole
             -- reason the tier has not moved.
-            local person  = ns.Roster.GetPerson(state.selected)
-            local grouped = person and ns.Roster.TimesGrouped(person) or 0
+            local grouped = ns.Roster.TimesGrouped(person)
             if grouped > 0 then
-                why:SetText(string.format(
-                    "no keystone runs yet -- but %d session%s together in other content\n"
-                    .. "(normal dungeons, delves and raids are recorded, but never rate anyone)",
-                    grouped, grouped == 1 and "" or "s"))
+                whyList:SetData({
+                    string.format("no keystone runs yet -- but %d session%s together",
+                        grouped, grouped == 1 and "" or "s"),
+                    "in other content. Normal dungeons, delves and raids are",
+                    "recorded, but they never rate anyone.",
+                })
             else
-                why:SetText("no runs recorded yet")
+                whyList:SetData({ "no runs recorded yet" })
             end
         end
     end
