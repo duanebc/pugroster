@@ -324,6 +324,10 @@ end
 -- "Name-Realm" from name/realm parts. The realm is always included so
 -- cross-realm groupmates stay distinguishable in display strings.
 function ns.FullName(name, realm)
+    -- Callers hand this straight from the friends list and the group roster, so
+    -- either half can be withheld. Comparing a secret raises, so both are
+    -- rejected before anything is compared or concatenated.
+    if ns.IsSecret(name) or ns.IsSecret(realm) then return nil end
     if not name or name == "" then return nil end
     if name:find("-", 1, true) then return name end
     if realm and realm ~= "" then return name .. "-" .. realm end
@@ -344,9 +348,11 @@ end
 -- notification that you messaged someone is most useful when it is also the way
 -- to message them again.
 function ns.PlayerLink(fullName, display)
-    if not fullName or fullName == "" or ns.IsSecret(fullName) then
-        return display or "?"
-    end
+    -- IsSecret before any comparison: `fullName == ""` raises on a secret string
+    -- rather than returning false, so a guard written in that order throws on
+    -- exactly the input it exists to reject.
+    if ns.IsSecret(fullName) then return display or "?" end
+    if not fullName or fullName == "" then return display or "?" end
     return string.format("|Hplayer:%s|h|cff9b7fd6[%s]|r|h",
         fullName, display or ns.ShortName(fullName))
 end

@@ -594,7 +594,10 @@ end
 
 -- "dungeon" | "raid" | "pvp" | nil, from wherever the client says they are.
 function Roster.ActivityFor(where)
-    if not where or where == "" or ns.IsSecret(where) then return nil end
+    -- IsSecret first: comparing a secret string to "" raises rather than
+    -- returning false, so the guard has to reject it before it touches it.
+    if ns.IsSecret(where) then return nil end
+    if not where or where == "" then return nil end
     if not instanceNames then Roster.RefreshInstanceNames() end
 
     local lower = where:lower()

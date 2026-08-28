@@ -144,7 +144,13 @@ end
 -- into one shared record -- five players merged into one, which then matches
 -- nobody. Secrets are not usable either.
 local function key(value)
-    if value == nil or value == "" or ns.IsSecret(value) then return nil end
+    -- Secrets first, and that order is the whole point: comparing a secret string
+    -- to "" raises "attempt to compare local 'value' (a secret string value)".
+    -- The test written to keep secrets out was itself the thing that threw on
+    -- one, which took down the entire read -- every player's numbers lost
+    -- because one source had a withheld name.
+    if ns.IsSecret(value) then return nil end
+    if value == nil or value == "" then return nil end
     return value
 end
 
