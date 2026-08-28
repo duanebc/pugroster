@@ -16,6 +16,14 @@
   searching "san" returned a row labelled "Unbroken" -- which looks exactly like
   not finding them. Search results now lead with the matching character and dim
   the person behind it.
+- **The join toast names whoever actually walked in.** It used the person record's
+  name, so somebody with several alts was announced under whichever one happened
+  to name the person -- a popup reading "Unbroken" when Sanlanesh joined.
+- **The join toast no longer fires for people who were already there.** Its
+  memory of who is in the group is empty after a login or a `/reload`, so the
+  first scan treated everyone standing beside you as a new arrival. That is what
+  the occasional unexplained popup was: not somebody joining, but the addon
+  loading.
 
 ## v1.0.3 -- 2026-08-28
 

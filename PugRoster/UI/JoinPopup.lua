@@ -12,6 +12,7 @@ ns.JoinPopup = JoinPopup
 
 local DURATION = 12
 local known = {}     -- guids already in the group, so we only toast on arrival
+local seeded = false -- has a group been scanned yet this session?
 local frame
 
 local function isInteresting(person)
@@ -64,17 +65,22 @@ local function ensureFrame()
     return frame
 end
 
-function JoinPopup.Show(person)
+-- `guid` is the character who just joined. Name them, not the person record:
+-- somebody with several alts is filed under whichever one named the person, and
+-- a toast reading "Unbroken" when Sanlanesh walked in identifies nobody. The
+-- character in front of you is the one you are about to talk to.
+function JoinPopup.Show(person, guid)
     if not ns.settings.showJoinPopup then return end
     local f = ensureFrame()
 
     local tier = ns.Roster.EffectiveTier(person)
     local color = ns.TIER_COLOR[tier] or ns.TIER_COLOR.Neutral
-    local char = ns.Roster.MainCharacter(person)
+    local char = (guid and ns.Roster.GetCharacter(guid)) or ns.Roster.MainCharacter(person)
+    local who = ns.ShortName((char and char.name) or person.name)
 
     f.stripe:SetColorTexture(color.r, color.g, color.b, 0.9)
     f.title:SetText(string.format("%s  %s",
-        ns.Colorize(ns.ShortName(person.name), char and ns.ClassColor(char.classFile)),
+        ns.Colorize(who, char and ns.ClassColor(char.classFile)),
         ns.TierText(tier)))
 
     local bits = { string.format("%d runs together", ns.Roster.RunsTogether(person)) }
@@ -94,11 +100,20 @@ end
 function JoinPopup.OnRosterUpdate()
     if not IsInGroup() then
         wipe(known)
+        seeded = false
         return
     end
 
     local me = UnitGUID("player")
     local current = {}
+
+    -- The first scan of a group we were already in is not an arrival. `known` is
+    -- empty after a login or a /reload, so without this every interesting person
+    -- standing beside you toasts again the moment the addon loads -- which is
+    -- what "occasionally getting popups" turns out to be, since it happens on a
+    -- reload rather than when anybody actually joined.
+    local announce = seeded
+    seeded = true
 
     for i = 1, 4 do
         local unit = "party" .. i
@@ -106,9 +121,9 @@ function JoinPopup.OnRosterUpdate()
             local guid = UnitGUID(unit)
             if guid and guid ~= me then
                 current[guid] = true
-                if not known[guid] then
+                if announce and not known[guid] then
                     local person = ns.Roster.PersonForGUID(guid)
-                    if isInteresting(person) then JoinPopup.Show(person) end
+                    if isInteresting(person) then JoinPopup.Show(person, guid) end
                 end
             end
         end
