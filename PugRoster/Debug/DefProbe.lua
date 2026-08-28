@@ -262,11 +262,13 @@ local function store(verdict)
                       units = unitList(seen.aura) },
         verdict   = verdict,
     })
-    -- The reload is not a formality. SavedVariables are written on reload or
-    -- logout and at no other time, so a run that is only in memory is a run that
-    -- is not on disk yet -- which is exactly how a probe session gets done twice.
+    -- Runs accumulate across the whole session, so this needs no reload between
+    -- dungeons -- `show` reads them back from memory at any point. The client
+    -- writes SavedVariables on reload or logout and at no other time, and no
+    -- addon can force that, so one logout at the end of a session is what puts
+    -- the lot on disk. Only reading them from outside the game needs that.
     ns.Print(string.format("|cff8f5fd6saved as run %d|r -- |cffffff00/pugdebug defprobe show|r"
-        .. " to read them back, |cffffff00/reload|r to write them to disk",
+        .. " any time; they reach disk on your next reload or logout",
         #ns.db.debugProbe))
 end
 
