@@ -199,6 +199,7 @@ local USAGE = {
     "  |cffffff00tier|r <name> -- print the full rating breakdown",
     "  |cffffff00export|r -- dump the in-progress run",
     "  |cffffff00details|r [meter] -- what the server and Details answer; name a meter (deaths, interrupts) to narrow it",
+    "  |cffffff00defprobe|r [seconds] -- which API can still see defensive cooldowns; run it in a pull",
     "  |cffffff00wipe|r [fake] -- clear everything, or only simulated records",
     "  |cffffff00popup|r [on|off] -- show or silence the blocked-action popup while debugging",
 }
@@ -305,6 +306,9 @@ SlashCmdList.PUGDEBUG = function(msg)
     elseif cmd == "details" then
         Debug.Print("Details report:")
         for _, line in ipairs(ns.DetailsBridge.Report(nil, args[2])) do ns.Print(line) end
+
+    elseif cmd == "defprobe" then
+        ns.DefProbe.Run(args[2])
 
     elseif cmd == "wipe" then
         if (args[2] or ""):lower() == "fake" then Debug.WipeFake() else Debug.WipeAll() end

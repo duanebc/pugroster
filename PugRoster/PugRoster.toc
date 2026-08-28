@@ -59,6 +59,10 @@ Debug\FakeRun.lua
 Debug\EventSim.lua
 Debug\FakeRoster.lua
 Debug\EchoSender.lua
+# Asks the client which APIs can still see defensive cooldowns. Debug-only
+# because two of the three answers require registering an event, and a refused
+# registration is a popup rather than something catchable.
+Debug\DefProbe.lua
 # Last: the panel drives every module above it.
 Debug\DebugPanel.lua
 #@end-debug@
