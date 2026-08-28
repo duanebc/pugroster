@@ -121,7 +121,21 @@ end
 local function note(bucket, unit, id, secret)
     local b = seen[bucket]
     b.events = b.events + 1
-    if unitIsGroup(unit) then b.group = b.group + 1 end
+    if unitIsGroup(unit) then
+        b.group = b.group + 1
+        -- Per unit, counted whether or not the id was readable. Without this a
+        -- groupmate whose casts come back secret looks exactly like a groupmate
+        -- who cast nothing, and those two answers send the feature down
+        -- different roads -- one to a spell list, the other to the server meter.
+        local u = b.units[unit]
+        if not u then
+            u = { unit = unit, events = 0, readable = 0, secret = 0 }
+            b.units[unit] = u
+        end
+        u.events = u.events + 1
+        if secret then u.secret = u.secret + 1
+        elseif id then u.readable = u.readable + 1 end
+    end
     if secret then
         b.secret = b.secret + 1
     elseif id then
@@ -172,6 +186,15 @@ local function onEvent(_, event, unit, arg2, arg3)
             end
         end
     end
+end
+
+-- Which units were actually seen, in unit order. This is the line that answers
+-- the only question a solo run cannot: whether party1-4 are visible at all.
+local function unitList(bucket)
+    local out = {}
+    for _, u in pairs(bucket.units or {}) do out[#out + 1] = u end
+    table.sort(out, function(a, b) return a.unit < b.unit end)
+    return out
 end
 
 -- Distinct spells seen, commonest first, as a sorted array. Declared above
@@ -231,10 +254,12 @@ local function store(verdict)
         elapsed   = seen.elapsed,
         cast      = { events = seen.cast.events, group = seen.cast.group,
                       readable = seen.cast.readable, secret = seen.cast.secret,
-                      sample = seen.cast.sample, spells = spellList(seen.cast) },
+                      sample = seen.cast.sample, spells = spellList(seen.cast),
+                      units = unitList(seen.cast) },
         aura      = { events = seen.aura.events, group = seen.aura.group,
                       readable = seen.aura.readable, secret = seen.aura.secret,
-                      sample = seen.aura.sample, spells = spellList(seen.aura) },
+                      sample = seen.aura.sample, spells = spellList(seen.aura),
+                      units = unitList(seen.aura) },
         verdict   = verdict,
     })
     -- The reload is not a formality. SavedVariables are written on reload or
@@ -261,6 +286,19 @@ local function report()
         line("ids readable:        %s  (%d readable, %d secret)",
             yn(s.readable > 0), s.readable, s.secret)
         if s.sample then line("sample:              %s", s.sample) end
+
+        local units = unitList(s)
+        if #units > 0 then
+            local bits = {}
+            for _, u in ipairs(units) do
+                bits[#bits + 1] = string.format("%s %d/%dsec", u.unit, u.readable, u.secret)
+            end
+            line("by unit (read/secret): %s", table.concat(bits, "  "))
+        end
+        if #units <= 1 and (GetNumGroupMembers and GetNumGroupMembers() or 0) > 1 then
+            line("|cffd9a441only one unit seen while grouped -- groupmates cast nothing,|r")
+            line("|cffd9a441or their casts are invisible. Re-run while they are pressing.|r")
+        end
 
         local spells = spellList(s)
         if #spells > 0 then
@@ -336,9 +374,9 @@ function DefProbe.Watch(seconds)
         seconds   = seconds,
         startedAt = ns.Now(),
         cast = { events = 0, group = 0, readable = 0, secret = 0,
-                 spells = {}, spellCount = 0 },
+                 spells = {}, spellCount = 0, units = {} },
         aura = { events = 0, group = 0, readable = 0, secret = 0,
-                 spells = {}, spellCount = 0 },
+                 spells = {}, spellCount = 0, units = {} },
     }
 
     watcher = watcher or CreateFrame("Frame")
