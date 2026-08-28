@@ -237,7 +237,11 @@ local function store(verdict)
                       sample = seen.aura.sample, spells = spellList(seen.aura) },
         verdict   = verdict,
     })
-    ns.Print(string.format("|cff8f5fd6saved as run %d|r -- /pugdebug defprobe show",
+    -- The reload is not a formality. SavedVariables are written on reload or
+    -- logout and at no other time, so a run that is only in memory is a run that
+    -- is not on disk yet -- which is exactly how a probe session gets done twice.
+    ns.Print(string.format("|cff8f5fd6saved as run %d|r -- |cffffff00/pugdebug defprobe show|r"
+        .. " to read them back, |cffffff00/reload|r to write them to disk",
         #ns.db.debugProbe))
 end
 
