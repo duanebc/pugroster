@@ -57,6 +57,39 @@ function panel.CurrentFilter() return state.filter end
 
 local TIER_ORDER = { Great = 4, Good = 3, Neutral = 2, Avoid = 1 }
 
+-- What the Name column says. It leads with the person, not with whichever
+-- character we happened to see most recently: somebody with seven alts is still
+-- one person you know by one name, and labelling his row "Nnkidu-Azshara"
+-- because that is who he logged in on last leaves him unfindable under the name
+-- you actually call him -- which is the opposite of a roster of people.
+--
+-- When the person and the character agree, which is the common case, this is
+-- exactly what it always was: character name with a dimmed realm.
+local function nameCell(item)
+    local color = item.char and ns.ClassColor(item.char.classFile)
+    local short = ns.ShortName(item.fullName)
+
+    -- Only lead with the person name when it is genuinely one of their own
+    -- characters. A person created without a name carries a placeholder like
+    -- "Person 24", and "Person 24 as Amycus" is worse than plain Amycus.
+    local known = false
+    if item.person then
+        for guid in pairs(item.person.characters or {}) do
+            local c = ns.Roster.GetCharacter(guid)
+            if c and ns.ShortName(c.name) == item.personName then known = true; break end
+        end
+    end
+
+    if not known or item.personName == "" or item.personName == short then
+        return ns.NameWithRealm(item.fullName, color)
+    end
+    -- Realm is dropped rather than shown twice: the person and the character can
+    -- sit on different realms, and both names plus both realms does not fit the
+    -- column. The detail pane lists every character in full.
+    return (color and ns.Colorize(item.personName, color) or item.personName)
+        .. "|cff7f7f7f as " .. short .. "|r"
+end
+
 local function rowFor(person)
     local char = ns.Roster.MainCharacter(person)
     local tier, source = ns.Roster.EffectiveTier(person)
@@ -70,6 +103,7 @@ local function rowFor(person)
             local c = ns.Roster.MainCharacter(person)
             return c and c.name or person.name or "?"
         end)(),
+        personName = person.name or "",
         role   = char and char.role or "",
         spec   = char and char.specName or "",
         ilvl   = char and char.ilvl or 0,
@@ -609,8 +643,7 @@ local function build(page)
         return row
     end, function(row, item)
         row.item = item
-        row.cells.name:SetText(ns.NameWithRealm(item.fullName,
-            item.char and ns.ClassColor(item.char.classFile)) .. ns.SimTag(item.person))
+        row.cells.name:SetText(nameCell(item) .. ns.SimTag(item.person))
         row.cells.role:SetText(ns.RoleLabel(item.role))
         row.cells.spec:SetText(item.spec ~= "" and item.spec or "-")
         row.cells.ilvl:SetText(item.ilvl > 0 and tostring(item.ilvl) or "-")

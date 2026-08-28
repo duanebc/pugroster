@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.0.1 -- unreleased
+
+- **The roster names people, not their alts.** A row was labelled by whichever
+  character you had seen most recently, so a friend with seven alts appeared
+  under whichever one he last logged in on -- and searching for the name you
+  actually call him found a row that did not look like him. Rows now lead with
+  the person and name the character second: `Sanlanesh as Nnkidu`. People with
+  one character are unaffected, and a person with only a placeholder name still
+  shows the character, because "Person 24 as Amycus" helps nobody.
+
 ## v1.0.0 -- 2026-08-27
 
 First public release.
