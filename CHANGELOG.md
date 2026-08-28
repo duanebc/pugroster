@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.0.2 -- 2026-08-28
+
+- **Mythic+ runs recorded every stat as zero.** Ordinary dungeons either side of
+  them recorded all five players, which made it look like only your own data
+  survived. The cause: the check for "is the server still withholding combat
+  values" tested the Combat restriction alone, and a key runs under ChallengeMode
+  as well -- which outlives the pull. When the key ended Combat had dropped and
+  ChallengeMode had not, so the addon read a meter that was still withholding,
+  got sources whose names and GUIDs were every one of them secret, matched
+  nobody, and filed the run with zeroes. It now waits for Combat, ChallengeMode,
+  Encounter and PvPMatch alike, and names which one is holding things up. Stats
+  land once you leave the dungeon rather than at the completion screen.
+- **The wait is ten minutes, not two.** Two expired while the group was still
+  standing in the finished key, which is exactly when ChallengeMode is still on.
+- **A run reads every session before giving up.** If the widest one matches
+  nobody -- which is what a withheld session looks like from outside -- the
+  narrower Current session is tried before falling back to Details.
+- **Failures say what happened.** "5 sources but 5 have no readable name or GUID"
+  and "no sources at all" were the same message, and they mean opposite things.
+
 ## v1.0.1 -- 2026-08-28
 
 - **The roster names people, not their alts.** A row was labelled by whichever
