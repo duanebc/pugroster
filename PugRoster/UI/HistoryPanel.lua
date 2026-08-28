@@ -59,6 +59,11 @@ function panel.ActionsFor(obs)
     end
 
     if name then
+        -- The character from this run, not the person's main: that is who you
+        -- are looking at, and an unfiled pug has no person to have a main.
+        entries[#entries + 1] = { text = "Invite to party", func = function()
+            ns.Replies.Invite(person, ns.Roster.GetCharacter(guid))
+        end }
         entries[#entries + 1] = { text = "Add friend", func = function()
             ns.Roster.AddFriendByName(name)
         end }

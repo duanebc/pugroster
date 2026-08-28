@@ -30,7 +30,16 @@ arithmetic, weight by weight.
 
 **Organises them.** A person is the human; characters link under them. Battle.net
 friends auto-link when the friends list exposes the mapping; anyone else can be
-linked by hand. Manual tags (relationship, play style, availability, voice, plus
+linked by hand.
+
+**And unlinked when that goes wrong.** **Unlink main** detaches one character.
+If a person has collected characters that are not theirs at all, `/pr unmerge`
+splits every person back apart by Battle.net account -- that ID comes from the
+server, so it is the one grouping that cannot be mistaken. It discards hand-made
+links along with the bad ones, because after the fact there is no telling them
+apart.
+
+Manual tags (relationship, play style, availability, voice, plus
 anything you invent) sit on the person; auto-tags (role, spec, item level bracket,
 Raider.IO bracket, computed tier) are derived and always current. The filter
 builder combines both -- `role = healer AND ilvl >= 640 AND tag = push` -- and any
@@ -64,6 +73,7 @@ CurseForge, Wago, or WoWInterface via your addon manager, or grab the zip from
 | `/pr options` | settings, tags, data tools |
 | `/pr rate` | recompute provisional tiers now |
 | `/pr note <name> <text>` | quick note without opening the UI |
+| `/pr unmerge` | split persons back apart by Battle.net account, when linking has gone wrong |
 
 ## Development builds
 

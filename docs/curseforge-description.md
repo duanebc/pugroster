@@ -67,6 +67,13 @@ brings tonight are the same player, and PugRoster knows it. Battle.net friends
 link themselves wherever the friends list exposes the mapping; anyone else can be
 linked by hand in two clicks.
 
+**And unlinked when it gets it wrong.** **Unlink main** detaches a single
+character. If a person has collected characters that are not theirs at all,
+`/pr unmerge` splits every person back apart by Battle.net account -- that ID
+comes from the server, so it is the one grouping that cannot be mistaken. It
+discards hand-made links along with the bad ones, because after the fact there is
+no way to tell them apart.
+
 **Your friends list is already in there.** Everyone on it is imported and tagged
 `existing_friend`, because the people you already know are precisely the ones
 worth bringing along -- and a roster made only of strangers would have been
@@ -173,6 +180,7 @@ guessing at who said yes.
 | `/pr options` | settings, tags, data tools |
 | `/pr rate` | recompute tiers now |
 | `/pr note <name> <text>` | quick note without opening the UI |
+| `/pr unmerge` | split persons back apart by Battle.net account, when linking has gone wrong |
 
 ---
 

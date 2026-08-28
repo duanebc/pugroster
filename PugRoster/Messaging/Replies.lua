@@ -111,8 +111,12 @@ end
 -- Invite
 --------------------------------------------------------------------------------
 
-function Replies.Invite(person)
-    local char = ns.Roster.MainCharacter(person)
+-- `char` overrides which character is invited. The history menu needs it: you
+-- are looking at one specific character in one specific run, and inviting their
+-- main instead would invite somebody who is not the person on your screen -- or
+-- nobody at all, since a pug you have never filed has no person to have a main.
+function Replies.Invite(person, char)
+    char = char or ns.Roster.MainCharacter(person)
     if not char or not char.name then return false end
 
     if ns.Debug and ns.Debug.EchoInvite then
@@ -120,7 +124,7 @@ function Replies.Invite(person)
     end
 
     -- Outside the echo sandbox a seeded name is not a person who can be invited.
-    if person.debug or char.debug then
+    if (person and person.debug) or char.debug then
         ns.Print(string.format("|cffff8080%s is simulated -- no invite sent.|r",
             ns.ShortName(char.name)))
         return false
