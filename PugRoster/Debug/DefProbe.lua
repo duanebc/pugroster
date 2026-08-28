@@ -102,6 +102,22 @@ local function unitIsGroup(unit)
     return unit == "player" or unit:match("^party[1-4]$") ~= nil
 end
 
+-- Spell names, so the log reads as "Shield Wall" rather than 871. The eventual
+-- DEFENSIVE_SPELLS table has to be written from something, and a list of what
+-- five real players actually pressed in a real key beats one assembled from
+-- memory -- that is half of what these runs are for.
+local function spellName(id)
+    if C_Spell and C_Spell.GetSpellInfo then
+        local info = C_Spell.GetSpellInfo(id)
+        if type(info) == "table" and info.name then return info.name end
+    end
+    if GetSpellInfo then
+        local name = GetSpellInfo(id)
+        if name then return name end
+    end
+    return nil
+end
+
 local function note(bucket, unit, id, secret)
     local b = seen[bucket]
     b.events = b.events + 1
@@ -112,6 +128,19 @@ local function note(bucket, unit, id, secret)
         b.readable = b.readable + 1
         if not b.sample and unitIsGroup(unit) then
             b.sample = string.format("%s cast %s", tostring(unit), tostring(id))
+        end
+        -- Every distinct spell, with who cast it and how often. Counts alone
+        -- prove the event fires; this is what says whether the thing it fires
+        -- for is a defensive at all.
+        if unitIsGroup(unit) then
+            local s = b.spells[id]
+            if not s then
+                s = { id = id, name = spellName(id), count = 0, units = {} }
+                b.spells[id] = s
+                b.spellCount = b.spellCount + 1
+            end
+            s.count = s.count + 1
+            s.units[unit] = (s.units[unit] or 0) + 1
         end
     end
 end
@@ -143,6 +172,24 @@ local function onEvent(_, event, unit, arg2, arg3)
             end
         end
     end
+end
+
+-- Distinct spells seen, commonest first, as a sorted array. Declared above
+-- store() rather than beside report(), because store() calls it -- a local
+-- defined later is a nil global from up here, not a forward reference.
+local function spellList(bucket)
+    local out = {}
+    for _, s in pairs(bucket.spells or {}) do
+        local units = {}
+        for unit, n in pairs(s.units) do units[#units + 1] = { unit = unit, count = n } end
+        table.sort(units, function(a, b) return a.unit < b.unit end)
+        out[#out + 1] = { id = s.id, name = s.name, count = s.count, units = units }
+    end
+    table.sort(out, function(a, b)
+        if a.count ~= b.count then return a.count > b.count end
+        return (a.name or tostring(a.id)) < (b.name or tostring(b.id))
+    end)
+    return out
 end
 
 -- Keep every run, not just the last thing printed to a chat frame that scrolls.
@@ -181,12 +228,13 @@ local function store(verdict)
         seconds   = seen.seconds,
         meters    = meters,
         sessions  = sessions,
+        elapsed   = seen.elapsed,
         cast      = { events = seen.cast.events, group = seen.cast.group,
                       readable = seen.cast.readable, secret = seen.cast.secret,
-                      sample = seen.cast.sample },
+                      sample = seen.cast.sample, spells = spellList(seen.cast) },
         aura      = { events = seen.aura.events, group = seen.aura.group,
                       readable = seen.aura.readable, secret = seen.aura.secret,
-                      sample = seen.aura.sample },
+                      sample = seen.aura.sample, spells = spellList(seen.aura) },
         verdict   = verdict,
     })
     ns.Print(string.format("|cff8f5fd6saved as run %d|r -- /pugdebug defprobe show",
@@ -194,6 +242,9 @@ local function store(verdict)
 end
 
 local function report()
+    seen.done = true
+    seen.elapsed = ns.Now() - (seen.startedAt or ns.Now())
+
     for _, b in ipairs({
         { key = "cast", label = "2. UNIT_SPELLCAST_SUCCEEDED" },
         { key = "aura", label = "3. UNIT_AURA" },
@@ -206,6 +257,22 @@ local function report()
         line("ids readable:        %s  (%d readable, %d secret)",
             yn(s.readable > 0), s.readable, s.secret)
         if s.sample then line("sample:              %s", s.sample) end
+
+        local spells = spellList(s)
+        if #spells > 0 then
+            line("distinct spells:     %d", #spells)
+            for i = 1, math.min(#spells, 12) do
+                local sp = spells[i]
+                local who = {}
+                for _, u in ipairs(sp.units) do
+                    who[#who + 1] = string.format("%s x%d", u.unit, u.count)
+                end
+                line("   %-28s %3d  (%s)",
+                    (sp.name or "?") .. " [" .. sp.id .. "]", sp.count,
+                    table.concat(who, ", "))
+            end
+            if #spells > 12 then line("   ... and %d more, all saved", #spells - 12) end
+        end
     end
 
     -- The verdict, so the answer is not left as an exercise.
@@ -262,9 +329,12 @@ function DefProbe.Watch(seconds)
     seconds = tonumber(seconds) or WATCH_SECONDS
 
     seen = {
-        seconds = seconds,
-        cast = { events = 0, group = 0, readable = 0, secret = 0 },
-        aura = { events = 0, group = 0, readable = 0, secret = 0 },
+        seconds   = seconds,
+        startedAt = ns.Now(),
+        cast = { events = 0, group = 0, readable = 0, secret = 0,
+                 spells = {}, spellCount = 0 },
+        aura = { events = 0, group = 0, readable = 0, secret = 0,
+                 spells = {}, spellCount = 0 },
     }
 
     watcher = watcher or CreateFrame("Frame")
@@ -272,13 +342,39 @@ function DefProbe.Watch(seconds)
     watcher:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
     watcher:RegisterEvent("UNIT_AURA")
 
-    ns.Print(string.format("|cff8f5fd6watching for %d seconds|r -- pull something "
-        .. "and press defensives, your own and a groupmate's", seconds))
-    C_Timer.After(seconds, function() pcall(report) end)
+    if seconds > 0 then
+        ns.Print(string.format("|cff8f5fd6watching for %d seconds|r -- pull something "
+            .. "and press defensives, your own and a groupmate's", seconds))
+        -- Guarded: stopping early already reported, and a timer that fires
+        -- afterwards must not report the same run twice.
+        C_Timer.After(seconds, function()
+            if seen and not seen.done then pcall(report) end
+        end)
+    else
+        ns.Print("|cff8f5fd6watching until |cffffff00/pugdebug defprobe stop|r|cff8f5fd6|r "
+            .. "-- run a whole key if you like")
+    end
 end
 
 function DefProbe.Run(seconds)
     ns.Print("|cff8f5fd6PugRoster defensive-capture probe|r")
     DefProbe.MeterTypes()
     DefProbe.Watch(seconds)
+end
+
+-- Open-ended, for a whole dungeon. A fixed window is enough to prove the event
+-- fires; it is not enough to see what five people actually press over a key,
+-- which is the list the feature has to be built from.
+function DefProbe.Start()
+    ns.Print("|cff8f5fd6PugRoster defensive-capture probe|r")
+    DefProbe.MeterTypes()
+    DefProbe.Watch(0)
+end
+
+function DefProbe.Stop()
+    if not seen or seen.done then
+        ns.Print("nothing is being watched -- |cffffff00/pugdebug defprobe start|r")
+        return
+    end
+    report()
 end

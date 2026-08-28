@@ -199,7 +199,8 @@ local USAGE = {
     "  |cffffff00tier|r <name> -- print the full rating breakdown",
     "  |cffffff00export|r -- dump the in-progress run",
     "  |cffffff00details|r [meter] -- what the server and Details answer; name a meter (deaths, interrupts) to narrow it",
-    "  |cffffff00defprobe|r [seconds|show|clear] -- which API can still see defensive cooldowns; every run is kept",
+    "  |cffffff00defprobe|r [seconds] -- which API can still see defensive cooldowns, over a fixed window",
+    "  |cffffff00defprobe start|r/|cffffff00stop|r -- the same, open-ended, for a whole key; |cffffff00show|r lists runs, |cffffff00clear|r drops them",
     "  |cffffff00wipe|r [fake] -- clear everything, or only simulated records",
     "  |cffffff00popup|r [on|off] -- show or silence the blocked-action popup while debugging",
 }
@@ -311,6 +312,8 @@ SlashCmdList.PUGDEBUG = function(msg)
         local sub = (args[2] or ""):lower()
         if sub == "show" then ns.DefProbe.Show()
         elseif sub == "clear" then ns.DefProbe.Clear()
+        elseif sub == "start" then ns.DefProbe.Start()
+        elseif sub == "stop" then ns.DefProbe.Stop()
         else ns.DefProbe.Run(args[2]) end
 
     elseif cmd == "wipe" then
