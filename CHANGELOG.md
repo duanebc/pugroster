@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.1 -- unreleased
+## v1.0.1 -- 2026-08-28
 
 - **The roster names people, not their alts.** A row was labelled by whichever
   character you had seen most recently, so a friend with seven alts appeared
