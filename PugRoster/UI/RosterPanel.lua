@@ -50,14 +50,27 @@ local state = {
 -- Substring match on the person and on every character they are known by, so
 -- searching a alt's name finds the person you filed them under. Case-insensitive
 -- and plain: a name with a "-" in it is the normal case here, not a pattern.
+-- Returns whether it matched, and -- when the hit came from one of their
+-- characters rather than the person's own name -- which character it was. The
+-- caller needs that second value: a person can be filed under one alt's name and
+-- contain the character you actually searched for, and a row labelled "Unbroken"
+-- is not a useful answer to "san".
 local function personMatches(person, needle)
     needle = (needle or ""):lower()
     if needle == "" then return true end
     if (person.name or ""):lower():find(needle, 1, true) then return true end
+
+    -- Alphabetically first of the matches rather than whichever `pairs` reaches
+    -- first, so the same search twice shows the same name.
+    local best
     for guid in pairs(person.characters or {}) do
         local c = ns.Roster.GetCharacter(guid)
-        if c and (c.name or ""):lower():find(needle, 1, true) then return true end
+        local cname = c and c.name
+        if cname and cname:lower():find(needle, 1, true) then
+            if not best or cname < best then best = cname end
+        end
     end
+    if best then return true, best end
     return false
 end
 
@@ -96,6 +109,18 @@ local TIER_ORDER = { Great = 4, Good = 3, Neutral = 2, Avoid = 1 }
 local function nameCell(item)
     local color = item.char and ns.ClassColor(item.char.classFile)
     local short = ns.ShortName(item.fullName)
+
+    -- A search result names the character that matched. Otherwise searching for
+    -- somebody by the name you know them by returns a row bearing an alt's name,
+    -- which looks exactly like not finding them at all.
+    if item.searchHit then
+        local hit = ns.NameWithRealm(item.searchHit, color)
+        local behind = item.personName
+        if behind ~= "" and behind ~= ns.ShortName(item.searchHit) then
+            hit = hit .. "|cff7f7f7f  " .. behind .. "|r"
+        end
+        return hit
+    end
 
     -- Only lead with the person name when it is genuinely one of their own
     -- characters. A person created without a name carries a placeholder like
@@ -170,6 +195,7 @@ local function rowFor(person)
             return c and c.name or person.name or "?"
         end)(),
         personName = person.name or "",
+        searchHit = select(2, personMatches(person, state.search)),
         role   = char and char.role or "",
         spec   = char and char.specName or "",
         ilvl   = char and char.ilvl or 0,
@@ -224,6 +250,14 @@ local function addCondition()
     if ns.Filters.FieldType(b.field) == "number" then value = tonumber(value) or 0 end
     table.insert(state.filter.conditions, { field = b.field, op = b.op, value = value })
     UI.Refresh()
+end
+
+-- Select somebody from another tab. The caller switches tabs; this only decides
+-- who the detail pane is showing.
+function panel.SelectPerson(person)
+    state.selected = person and person.id or nil
+    -- The link filter belonged to whoever was selected before.
+    state.linkSearch = ""
 end
 
 function panel.AddTagToFilter(tag)
@@ -550,25 +584,7 @@ local function buildDetail(parent)
     local friendBtn = UI.Button(d, "Add friend", 100, function()
         local person = ns.Roster.GetPerson(state.selected)
         local char = person and ns.Roster.MainCharacter(person)
-        if not char or not char.name then return end
-
-        if not (C_FriendList and C_FriendList.AddFriend) then
-            ns.Print("this client has no AddFriend API. Use |cffffff00/friend "
-                .. char.name .. "|r")
-            return
-        end
-
-        C_FriendList.AddFriend(char.name)
-        C_Timer.After(2, function()
-            if ns.Roster.IsFriend(char.name) then
-                ns.Print("added |cff9b7fd6" .. char.name .. "|r to your friends list.")
-            else
-                ns.Print(string.format("could not add %s. The server only accepts a "
-                    .. "friend request while that character is online -- try again "
-                    .. "when they are.", char.name))
-            end
-            UI.Refresh()
-        end)
+        if char and char.name then ns.Roster.AddFriendByName(char.name) end
     end)
     friendBtn:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", -2, -6)
     friendBtn:SetHeight(18)

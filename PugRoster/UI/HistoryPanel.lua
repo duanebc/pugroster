@@ -25,6 +25,61 @@ local function contentOf(record)
     return record.content or "mythic+"
 end
 
+-- What a right-click on a group row offers. Deliberately shallow: the roster's
+-- detail pane already owns tier, tags and notes, and a second place to edit a
+-- person is a second place for the two to disagree. "Open in Roster" is the way
+-- to all of it.
+--
+-- Nothing here creates anything. Browsing history should not quietly grow the
+-- roster, and a fight's observations are keyed by whatever the fight involved --
+-- bosses included -- so a mistimed click could otherwise file a Creature as
+-- somebody you ran with.
+function panel.ActionsFor(obs)
+    local guid = obs and obs.guid
+    local name = obs and obs.name
+
+    if type(guid) ~= "string" or guid:sub(1, 7) ~= "Player-" then
+        -- An entry with no `func` closes the menu and does nothing else, which
+        -- is a better answer than four items that all silently fail.
+        return { { text = "|cff8a8a95not a player|r" } }
+    end
+
+    local person = ns.Roster.PersonForGUID(guid)
+    local entries = {}
+
+    if person then
+        entries[#entries + 1] = { text = "View their history", func = function()
+            panel.FocusPerson(person)
+            UI.Refresh()
+        end }
+        entries[#entries + 1] = { text = "Message", func = function()
+            ns.SendPanel.SeedWithPerson(person)
+            UI.Show("Send")
+        end }
+    end
+
+    if name then
+        entries[#entries + 1] = { text = "Add friend", func = function()
+            ns.Roster.AddFriendByName(name)
+        end }
+        entries[#entries + 1] = { text = "Whisper", func = function()
+            if ChatFrame_SendTell then ChatFrame_SendTell(name) end
+        end }
+    end
+
+    if person then
+        entries[#entries + 1] = { text = "Open in Roster", func = function()
+            ns.RosterPanel.SelectPerson(person)
+            UI.Show("Roster")
+        end }
+    end
+
+    if #entries == 0 then
+        entries[1] = { text = "|cff8a8a95nothing to do for this row|r" }
+    end
+    return entries
+end
+
 -- Called from the roster panel: narrow the history to runs with this person.
 function panel.FocusPerson(person)
     state.personFilter = person and person.id or nil
@@ -235,17 +290,26 @@ local function build(page)
             fs:SetWordWrap(false)
             row.cells[col.key] = fs
         end
-        row:SetScript("OnClick", function(self)
-            if self.obs then
-                local char = ns.Roster.GetCharacter(self.obs.guid)
-                if char then
-                    ns.Print(string.format("%s -- score %.2f over %d runs%s (%s)",
-                        char.name or "?", char.score or 0, char.runs or 0,
-                        (char.grouped or 0) > 0
-                            and string.format(" and %d other session%s", char.grouped,
-                                              char.grouped == 1 and "" or "s") or "",
-                        char.autoTier or "Neutral"))
-                end
+        -- Right-click is registered on this row and nowhere else. UI.MakeRow is
+        -- shared by the roster list, the run list, the send recipients and the
+        -- sent log, and none of those handlers look at `button` -- so enabling
+        -- right-clicks in the helper would make a right-click fire each of their
+        -- left-click actions instead of doing nothing.
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:SetScript("OnClick", function(self, button)
+            if not self.obs then return end
+            if button == "RightButton" then
+                UI.ShowMenu(self, panel.ActionsFor(self.obs), 150)
+                return
+            end
+            local char = ns.Roster.GetCharacter(self.obs.guid)
+            if char then
+                ns.Print(string.format("%s -- score %.2f over %d runs%s (%s)",
+                    char.name or "?", char.score or 0, char.runs or 0,
+                    (char.grouped or 0) > 0
+                        and string.format(" and %d other session%s", char.grouped,
+                                          char.grouped == 1 and "" or "s") or "",
+                    char.autoTier or "Neutral"))
             end
         end)
         return row

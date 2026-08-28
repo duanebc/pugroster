@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.0.4 -- unreleased
+
+- **Right-click anyone in a run's group list.** The History tab is where you form
+  an opinion about somebody, and the row was a dead end. It now offers their
+  history, a message, an Add friend, and Open in Roster -- with a whisper for a
+  pug you have never filed. Left-click still prints their score, unchanged.
+  Deliberately shallow: the roster's detail pane owns tier, tags and notes, and a
+  second place to edit a person is a second place for the two to disagree.
+  Nothing is created by clicking -- browsing history does not grow your roster,
+  and a boss in a fight record says "not a player" rather than offering to
+  befriend it.
+- **Searching the roster names the character you searched for.** A person filed
+  under one alt's name can contain the character you are looking for, so
+  searching "san" returned a row labelled "Unbroken" -- which looks exactly like
+  not finding them. Search results now lead with the matching character and dim
+  the person behind it.
+
 ## v1.0.3 -- 2026-08-28
 
 - **Mythic+ runs recorded every stat as zero, for real this time.** v1.0.2 fixed

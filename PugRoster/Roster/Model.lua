@@ -136,6 +136,38 @@ function Roster.IsFriend(fullName)
     return false
 end
 
+-- Add a character to the friends list by "Name-Realm". Adding a friend is what
+-- makes somebody's online status visible, which is otherwise only knowable for
+-- Battle.net friends, character friends and guildmates -- so it is worth
+-- offering wherever a character is shown, not only in the roster.
+--
+-- The server answers asynchronously and refuses with "Player not found" for a
+-- character who is not currently online, so this checks the friends list a moment
+-- later and reports what actually happened rather than claiming success.
+function Roster.AddFriendByName(name)
+    if ns.IsSecret(name) then return false end
+    if not name or name == "" then return false end
+
+    if not (C_FriendList and C_FriendList.AddFriend) then
+        ns.Print("this client has no AddFriend API. Use |cffffff00/friend "
+            .. name .. "|r")
+        return false
+    end
+
+    C_FriendList.AddFriend(name)
+    C_Timer.After(2, function()
+        if Roster.IsFriend(name) then
+            ns.Print("added |cff9b7fd6" .. name .. "|r to your friends list.")
+        else
+            ns.Print(string.format("could not add %s. The server only accepts a "
+                .. "friend request while that character is online -- try again "
+                .. "when they are.", name))
+        end
+        if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+    end)
+    return true
+end
+
 function Roster.IsSelf(person)
     if not person then return false end
     for guid in pairs(person.characters) do
