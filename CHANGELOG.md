@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.0.3 -- 2026-08-28
+
+- **Mythic+ runs recorded every stat as zero, for real this time.** v1.0.2 fixed
+  a restriction check that was genuinely wrong but was not the cause. The cause
+  was one line in the guard written to keep withheld values out: it compared the
+  value to `""` *before* asking whether it was secret, and comparing a secret
+  raises rather than returning false. So the check meant to reject a withheld
+  name threw on the first one it met, and a single withheld actor took down the
+  whole read -- which is why an entire group's numbers vanished at once, and why
+  ordinary dungeons, where nothing is withheld, kept working throughout. Secrecy
+  is now tested before anything is compared, in all four places that take values
+  from the client.
+- **"Pull from Details" refused before it tried.** It checked whether the Details
+  addon was loaded, but stats come from Blizzard's server meter and Details is
+  only the fallback -- so it turned down the source that works on behalf of the
+  one that does not, and did so most reliably after a reload, when Details has
+  forgotten the run and the server has not.
+- **Failures say what actually happened.** A thrown error, a withholding server
+  and a clean no-match all printed "Details refused the read", naming a component
+  that is usually not even involved. Each now reports itself, errors included.
+- The Details fallback is sandboxed, so an error inside it can no longer discard
+  a server result that had already been read successfully.
+
 ## v1.0.2 -- 2026-08-28
 
 - **Mythic+ runs recorded every stat as zero.** Ordinary dungeons either side of
