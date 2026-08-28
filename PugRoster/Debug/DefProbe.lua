@@ -145,6 +145,54 @@ local function onEvent(_, event, unit, arg2, arg3)
     end
 end
 
+-- Keep every run, not just the last thing printed to a chat frame that scrolls.
+-- The whole point of running this with a group is comparing several attempts --
+-- a spellcast that fires for one friend and not another is the finding -- and a
+-- result you cannot re-read is a result you have to go and get again.
+--
+-- On the database root rather than in ns.settings, the way debugEcho is, so no
+-- debug key ever reaches the production defaults table. Debug/ is stripped from
+-- released builds, so nothing outside development ever writes here.
+local function store(verdict)
+    if not ns.db then return end
+    ns.db.debugProbe = ns.db.debugProbe or {}
+
+    local meters = {}
+    local names = ns.DetailsBridge and ns.DetailsBridge.MeterTypeNames()
+    if type(names) == "table" then
+        for id, n in pairs(names) do meters[#meters + 1] = { id = id, name = n } end
+        table.sort(meters, function(a, b) return a.id < b.id end)
+    end
+
+    local sessions = {}
+    local found = ns.DetailsBridge and ns.DetailsBridge.ServerSessions()
+    for _, s in ipairs(found or {}) do
+        local sess = s.session
+        sessions[#sessions + 1] = {
+            kind = tostring(s.kindName), meter = tostring(s.meterName),
+            sources = type(sess.combatSources) == "table" and #sess.combatSources or -1,
+        }
+    end
+
+    table.insert(ns.db.debugProbe, {
+        at        = ns.Now(),
+        zone      = GetZoneText and GetZoneText() or nil,
+        groupSize = GetNumGroupMembers and GetNumGroupMembers() or 0,
+        seconds   = seen.seconds,
+        meters    = meters,
+        sessions  = sessions,
+        cast      = { events = seen.cast.events, group = seen.cast.group,
+                      readable = seen.cast.readable, secret = seen.cast.secret,
+                      sample = seen.cast.sample },
+        aura      = { events = seen.aura.events, group = seen.aura.group,
+                      readable = seen.aura.readable, secret = seen.aura.secret,
+                      sample = seen.aura.sample },
+        verdict   = verdict,
+    })
+    ns.Print(string.format("|cff8f5fd6saved as run %d|r -- /pugdebug defprobe show",
+        #ns.db.debugProbe))
+end
+
 local function report()
     for _, b in ipairs({
         { key = "cast", label = "2. UNIT_SPELLCAST_SUCCEEDED" },
@@ -161,21 +209,51 @@ local function report()
     end
 
     -- The verdict, so the answer is not left as an exercise.
-    ns.Print("|cff8f5fd6verdict|r")
+    local verdict
     if seen.cast.readable > 0 and seen.cast.group > 0 then
-        line("|cff40d060UNIT_SPELLCAST_SUCCEEDED works -- a spell list can count casts|r")
+        verdict = "spellcast works -- a spell list can count casts"
     elseif seen.cast.group > 0 then
-        line("|cffd9a441spellcast fires for the group but the ids are secret|r")
+        verdict = "spellcast fires for the group but the ids are secret"
     else
-        line("|cffff5555no usable spellcast data|r")
+        verdict = "no usable spellcast data"
     end
     if seen.aura.readable > 0 then
-        line("|cff40d060UNIT_AURA is readable -- usable as the fallback|r")
+        verdict = verdict .. "; UNIT_AURA readable as fallback"
     end
+
+    ns.Print("|cff8f5fd6verdict|r")
+    line(verdict)
     line("if a damage-taken meter appeared in step 1, prefer that over both.")
 
     watcher:UnregisterAllEvents()
     watcher:SetScript("OnEvent", nil)
+
+    store(verdict)
+end
+
+-- What every run so far found, so several attempts can be compared without
+-- having kept the chat frame open.
+function DefProbe.Show()
+    local runs = ns.db and ns.db.debugProbe
+    if type(runs) ~= "table" or #runs == 0 then
+        ns.Print("no probe runs stored yet -- |cffffff00/pugdebug defprobe|r records one")
+        return
+    end
+    ns.Print(string.format("|cff8f5fd6%d probe run%s|r", #runs, #runs == 1 and "" or "s"))
+    for i, r in ipairs(runs) do
+        line("%d. %s  group=%d  %ds", i, tostring(r.zone or "?"),
+            tonumber(r.groupSize) or 0, tonumber(r.seconds) or 0)
+        line("   cast: %d events, %d group, %d readable, %d secret",
+            r.cast.events, r.cast.group, r.cast.readable, r.cast.secret)
+        line("   aura: %d events, %d group, %d readable, %d secret",
+            r.aura.events, r.aura.group, r.aura.readable, r.aura.secret)
+        line("   %s", tostring(r.verdict))
+    end
+end
+
+function DefProbe.Clear()
+    if ns.db then ns.db.debugProbe = nil end
+    ns.Print("probe runs cleared")
 end
 
 -- Watch both events for a fixed window. Bounded on purpose: this is a question
@@ -184,6 +262,7 @@ function DefProbe.Watch(seconds)
     seconds = tonumber(seconds) or WATCH_SECONDS
 
     seen = {
+        seconds = seconds,
         cast = { events = 0, group = 0, readable = 0, secret = 0 },
         aura = { events = 0, group = 0, readable = 0, secret = 0 },
     }
