@@ -342,11 +342,19 @@ function RunTracker.Finalize(run, result)
                 .. " Try |cffffff00Pull from Details|r on the History tab before "
                 .. "you reload -- Details forgets the run when you do.")
         end
-        ns.DetailsBridge.WhenUnlocked(120, function(unlocked)
+        -- Ten minutes, not two. The restriction that matters here is
+        -- ChallengeMode, and it outlives the key: it is still active while the
+        -- group stands in the finished dungeon deciding what to do next, and
+        -- clears when you actually leave. Two minutes expired inside the
+        -- instance every time, and the ladder then read a meter that was still
+        -- withholding and filed the run with zeroes.
+        ns.DetailsBridge.WhenUnlocked(600, function(unlocked)
             if not unlocked then
-                ns.Print("|cffd9a441still in combat two minutes after the key ended|r"
-                    .. " -- the server has not released this run's numbers. Try"
-                    .. " |cffffff00Pull from Details|r once you are out of combat.")
+                ns.Print("|cffd9a441ten minutes on and the server is still"
+                    .. " withholding this run's numbers|r ("
+                    .. table.concat(ns.DetailsBridge.ActiveLocks(), "+")
+                    .. "). Try |cffffff00Pull from Details|r once you have left"
+                    .. " the dungeon.")
                 return
             end
             C_Timer.After(delays[1], attempt)

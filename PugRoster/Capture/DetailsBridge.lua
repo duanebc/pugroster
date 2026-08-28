@@ -192,9 +192,13 @@ end
 
 -- Totals for the run's segment, or nil plus a reason.
 function Bridge.GetSegmentTotals()
-    if Bridge.IsLocked() then
-        return nil, "the server is withholding combat values right now (you are "
-            .. "still in combat). They are released when combat drops."
+    local locks = Bridge.ActiveLocks()
+    if #locks > 0 then
+        -- Naming the restriction matters: Combat clears seconds after a pull,
+        -- ChallengeMode holds until the key is finished and left behind.
+        return nil, string.format("the server is withholding combat values right "
+            .. "now (%s restriction active). They are released when it clears.",
+            table.concat(locks, "+"))
     end
 
     local d = details()
@@ -426,16 +430,40 @@ end
 -- for combat to drop (its WaitServerDropCombat) before it reads anything, and so
 -- must we. Reading during lockdown gets nothing no matter how correct the rest
 -- of the code is.
-function Bridge.IsLocked()
+-- Every restriction that withholds combat values, not just Combat.
+--
+-- Checking Combat alone is why four keys in a row filed empty while ordinary
+-- dungeons on either side of them recorded all five players. A key runs under
+-- the *ChallengeMode* restriction as well, and that one outlives the pull: when
+-- CHALLENGE_MODE_COMPLETED fires, Combat has dropped and ChallengeMode has not.
+-- So IsLocked said "go ahead", the read came back with sources whose names and
+-- GUIDs were every one of them secret, nothing matched anybody, and the run was
+-- filed with zeroes and no explanation.
+--
+-- The failure mode is the point: under-reporting the lock does not degrade the
+-- read, it silently empties it. Over-reporting only makes the retry wait longer.
+local LOCKING = { "Combat", "ChallengeMode", "Encounter", "PvPMatch" }
+
+-- Which restrictions are active right now, as a list of names.
+function Bridge.ActiveLocks()
     if type(C_RestrictedActions) ~= "table"
         or type(C_RestrictedActions.GetAddOnRestrictionState) ~= "function"
         or type(Enum) ~= "table" or type(Enum.AddOnRestrictionType) ~= "table" then
-        return false
+        return {}
     end
-    local id = Enum.AddOnRestrictionType.Combat
-    if not id then return false end
-    local ok, state = pcall(C_RestrictedActions.GetAddOnRestrictionState, id)
-    return ok and state ~= nil and state ~= 0 and true or false
+    local out = {}
+    for _, name in ipairs(LOCKING) do
+        local id = Enum.AddOnRestrictionType[name]
+        if id then
+            local ok, state = pcall(C_RestrictedActions.GetAddOnRestrictionState, id)
+            if ok and state ~= nil and state ~= 0 then out[#out + 1] = name end
+        end
+    end
+    return out
+end
+
+function Bridge.IsLocked()
+    return #Bridge.ActiveLocks() > 0
 end
 
 -- Run `fn` once the server stops withholding, or give up after `timeout`.
@@ -528,9 +556,13 @@ end
 -- just ended, "Overall" for everything since the meter was reset). Without it the
 -- widest session wins, which is right for a whole key and wrong for one pull.
 function Bridge.ServerTotals(preferType)
-    if Bridge.IsLocked() then
-        return nil, "the server is withholding combat values right now (you are "
-            .. "still in combat). They are released when combat drops."
+    local locks = Bridge.ActiveLocks()
+    if #locks > 0 then
+        -- Naming the restriction matters: Combat clears seconds after a pull,
+        -- ChallengeMode holds until the key is finished and left behind.
+        return nil, string.format("the server is withholding combat values right "
+            .. "now (%s restriction active). They are released when it clears.",
+            table.concat(locks, "+"))
     end
 
     local sessions = Bridge.ServerSessions()
