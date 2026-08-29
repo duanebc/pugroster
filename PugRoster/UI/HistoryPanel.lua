@@ -12,6 +12,18 @@ local state = {
     selectedRun = nil,     -- "run:<id>" or "fight:<id>"
     personFilter = nil,    -- personId, set by the roster panel
     contentFilter = nil,   -- nil = everything
+    -- Group table ordering. No key means the default: tank, healer, then DPS by
+    -- damage, which is how you read a group rather than how you interrogate one.
+    groupSort = { sortKey = nil, sortAsc = false },
+}
+
+-- Column keys are not observation field names, and two columns are rates
+-- computed from a total and the record's combat time rather than stored at all.
+local GROUP_VALUE = {
+    kicks = function(o) return o.interrupts or 0 end,
+    disp  = function(o) return o.dispels or 0 end,
+    dmg   = function(o) return o.damage or 0 end,
+    heal  = function(o) return o.healing or 0 end,
 }
 
 -- Keys and fights live in separate stores -- Rating reads only the keys -- so
@@ -262,19 +274,16 @@ local function build(page)
         { key = "dps",    label = "dps",    x = 442, width = 54,  align = "RIGHT" },
         { key = "heal",   label = "heal",   x = 498, width = 60,  align = "RIGHT" },
         { key = "hps",    label = "hps",    x = 560, width = 54,  align = "RIGHT" },
-        { key = "flag",   label = "",       x = 616, width = 56,  align = "LEFT" },
+        -- No ordering to offer: it marks "you", nothing more.
+        { key = "flag",   label = "",       x = 616, width = 56,  align = "LEFT",
+          nosort = true },
     }
 
-    local cols = CreateFrame("Frame", nil, detail)
+    -- Clickable, so a run can be read by whatever you are asking about -- who
+    -- died, who kicked, who did the damage -- rather than only in group order.
+    local cols = UI.SortHeader(detail, GROUP_COLS, state.groupSort, UI.Refresh)
     cols:SetPoint("TOPLEFT", groupHeader, "BOTTOMLEFT", 0, -3)
     cols:SetPoint("RIGHT", detail, "RIGHT", -8, 0)
-    cols:SetHeight(12)
-    for _, col in ipairs(GROUP_COLS) do
-        local fs = UI.Label(cols, col.label, 10, { 0.5, 0.5, 0.58 })
-        fs:SetPoint("TOPLEFT", col.x, 0)
-        fs:SetWidth(col.width)
-        fs:SetJustifyH(col.align)
-    end
 
     local function short(n)
         return ns.FormatCount(n)
@@ -409,6 +418,7 @@ local function build(page)
     empty:SetPoint("TOPLEFT", 10, -10)
 
     page.Refresh = function()
+        cols:Refresh()
         local runs = runsForView()
 
         if state.personFilter then
@@ -502,12 +512,31 @@ local function build(page)
 
         local obsList = {}
         for _, obs in pairs(run.observations or {}) do obsList[#obsList + 1] = obs end
-        table.sort(obsList, function(a, b)
-            local ra = (a.role == "TANK" and 1) or (a.role == "HEALER" and 2) or 3
-            local rb = (b.role == "TANK" and 1) or (b.role == "HEALER" and 2) or 3
-            if ra ~= rb then return ra < rb end
-            return (a.damage or 0) > (b.damage or 0)
-        end)
+
+        if state.groupSort.sortKey then
+            UI.SortRows(obsList, state.groupSort.sortKey, state.groupSort.sortAsc, {
+                tiebreak = "name",
+                value = function(o, key)
+                    local fn = GROUP_VALUE[key]
+                    if fn then return fn(o) end
+                    -- The rate columns are the total over the record's combat
+                    -- time, which is what the cell shows -- sorting the stored
+                    -- total instead would order them differently from the column
+                    -- you clicked.
+                    if key == "dps" then return ns.PerSecond(o.damage, run) or 0 end
+                    if key == "hps" then return ns.PerSecond(o.healing, run) or 0 end
+                    return o[key]
+                end,
+            })
+        else
+            -- Group order: tank, healer, then DPS by damage.
+            table.sort(obsList, function(a, b)
+                local ra = (a.role == "TANK" and 1) or (a.role == "HEALER" and 2) or 3
+                local rb = (b.role == "TANK" and 1) or (b.role == "HEALER" and 2) or 3
+                if ra ~= rb then return ra < rb end
+                return (a.damage or 0) > (b.damage or 0)
+            end)
+        end
         groupList:SetData(obsList)
 
         chatList:SetData(chat)

@@ -220,18 +220,8 @@ local function buildRows()
         end
     end
 
-    local key, asc = state.sortKey, state.sortAsc
-    table.sort(rows, function(a, b)
-        local x, y = a[key], b[key]
-        if key == "tier" then x, y = TIER_ORDER[a.tier] or 0, TIER_ORDER[b.tier] or 0 end
-        if x == y then return (a.name or "") < (b.name or "") end
-        if type(x) == "number" and type(y) == "number" then
-            if asc then return x < y else return x > y end
-        end
-        x, y = tostring(x), tostring(y)
-        if asc then return x < y else return x > y end
-    end)
-    return rows
+    return UI.SortRows(rows, state.sortKey, state.sortAsc,
+        { rank = { tier = TIER_ORDER }, tiebreak = "name" })
 end
 
 --------------------------------------------------------------------------------
@@ -785,22 +775,10 @@ local function build(page)
     header:SetPoint("TOPRIGHT", detail, "TOPLEFT", -8, 0)
     header:SetHeight(20)
 
-    local x = 0
-    for _, col in ipairs(COLUMNS) do
-        local b = UI.Button(header, col.label, col.width, nil)
-        b:SetPoint("LEFT", x, 0)
-        b:SetHeight(18)
-        b.label:SetTextColor(unpack(UI.COLORS.header))
-        b.bg:SetColorTexture(0, 0, 0, 0)
-        b:SetScript("OnClick", function()
-            if state.sortKey == col.key then state.sortAsc = not state.sortAsc
-            else state.sortKey, state.sortAsc = col.key, false end
-            UI.Refresh()
-        end)
-        b:SetScript("OnEnter", function(self) self.label:SetTextColor(1, 1, 1) end)
-        b:SetScript("OnLeave", function(self) self.label:SetTextColor(unpack(UI.COLORS.header)) end)
-        x = x + col.width
-    end
+    local sortBar = UI.SortHeader(header, COLUMNS, state, UI.Refresh)
+    sortBar:SetPoint("TOPLEFT", 0, 0)
+    sortBar:SetPoint("TOPRIGHT", 0, 0)
+    header.sortBar = sortBar
 
     local list = UI.ScrollList(page, ROW_HEIGHT, function(parent)
         local row = UI.MakeRow(parent)
@@ -883,6 +861,7 @@ local function build(page)
 
     page.Refresh = function()
         filterBar.Refresh()
+        sortBar:Refresh()
         local rows = buildRows()
         list:SetData(rows)
         detail.Refresh()

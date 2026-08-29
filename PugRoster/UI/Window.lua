@@ -356,6 +356,113 @@ function UI.ScrollList(parent, rowHeight, createRow, updateRow)
 end
 
 -- Standard row shell: background stripe plus hover highlight.
+--------------------------------------------------------------------------------
+-- Sortable columns
+--
+-- Every table in the addon wants the same two things: a header row you can click
+-- and a comparator that copes with the columns actually being sorted -- numbers
+-- with gaps in them, tiers that rank rather than alphabetise, and a stable
+-- tiebreak so equal rows do not shuffle between refreshes.
+--------------------------------------------------------------------------------
+
+-- `opts.rank` maps a column key to a value order (tiers are Great..Avoid, not
+-- alphabetical). `opts.tiebreak` names the column that breaks ties, so a table
+-- sorted by a column full of zeroes still has a stable order.
+function UI.SortRows(rows, key, asc, opts)
+    if not key then return rows end
+    opts = opts or {}
+    local rank = opts.rank and opts.rank[key]
+    local tie = opts.tiebreak
+    -- `opts.value` reads the sort value for a column, for tables whose column
+    -- keys are not field names -- "kicks" over obs.interrupts -- or whose columns
+    -- are computed rather than stored, like a rate over a stored total.
+    local get = opts.value or function(row, k) return row[k] end
+
+    table.sort(rows, function(a, b)
+        local x, y = get(a, key), get(b, key)
+        if rank then x, y = rank[x] or 0, rank[y] or 0 end
+
+        -- A missing number is zero, not the string "nil". Sorting item level
+        -- with two people missing one should not file them under N.
+        if x == nil and type(y) == "number" then x = 0 end
+        if y == nil and type(x) == "number" then y = 0 end
+
+        if x == y then
+            if tie then return tostring(get(a, tie) or "") < tostring(get(b, tie) or "") end
+            return false
+        end
+        if type(x) == "number" and type(y) == "number" then
+            if asc then return x < y else return x > y end
+        end
+        x, y = tostring(x), tostring(y)
+        if asc then return x < y else return x > y end
+    end)
+    return rows
+end
+
+-- A clickable header. `columns` is the same array the rows are drawn from, so
+-- the two cannot drift; a column with no `key` is a label and does not sort.
+-- Widths lay out left to right unless a column carries its own `x`.
+function UI.SortHeader(parent, columns, state, onChange)
+    local header = CreateFrame("Frame", nil, parent)
+    header:SetHeight(20)
+    header.buttons = {}
+
+    local x = 0
+    for _, col in ipairs(columns) do
+        local b = UI.Button(header, col.label or "", col.width or 60, nil)
+        b:SetPoint("LEFT", col.x or x, 0)
+        b:SetHeight(18)
+        b.bg:SetColorTexture(0, 0, 0, 0)
+        b.col = col
+
+        -- Header alignment has to match the cells beneath it, or a right-aligned
+        -- number sits under a centred word.
+        if col.align then
+            b.label:ClearAllPoints()
+            b.label:SetPoint(col.align == "RIGHT" and "RIGHT" or "LEFT",
+                col.align == "RIGHT" and -2 or 2, 0)
+            b.label:SetJustifyH(col.align)
+        end
+
+        -- `nosort` is for a column that has a key because its cells need one, but
+        -- nothing meaningful to order by -- a flag, an icon, a marker.
+        if col.key and not col.nosort then
+            b:SetScript("OnClick", function()
+                if state.sortKey == col.key then
+                    state.sortAsc = not state.sortAsc
+                else
+                    -- A fresh column starts descending: every numeric column
+                    -- here is one where "most" is the interesting end.
+                    state.sortKey, state.sortAsc = col.key, false
+                end
+                if onChange then onChange() end
+            end)
+            b:SetScript("OnEnter", function(self) self.label:SetTextColor(1, 1, 1) end)
+            b:SetScript("OnLeave", function() header:Refresh() end)
+        end
+
+        header.buttons[#header.buttons + 1] = b
+        x = x + (col.width or 0)
+    end
+
+    function header:Refresh()
+        for _, b in ipairs(self.buttons) do
+            local active = b.col.key and not b.col.nosort and state.sortKey == b.col.key
+            b.label:SetText((b.col.label or "")
+                .. (active and (state.sortAsc and " |cff9b7fd6^|r" or " |cff9b7fd6v|r") or ""))
+            if active then
+                b.label:SetTextColor(0.92, 0.88, 1)
+            else
+                b.label:SetTextColor(unpack(COLORS.header))
+            end
+        end
+    end
+
+    header:Refresh()
+    return header
+end
+
 function UI.MakeRow(parent)
     local row = CreateFrame("Button", nil, parent)
     row.stripe = row:CreateTexture(nil, "BACKGROUND")
