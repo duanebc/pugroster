@@ -22,6 +22,7 @@ local state = {
 local GROUP_VALUE = {
     kicks = function(o) return o.interrupts or 0 end,
     disp  = function(o) return o.dispels or 0 end,
+    def   = function(o) return o.defensives or 0 end,
     dmg   = function(o) return o.damage or 0 end,
     heal  = function(o) return o.healing or 0 end,
 }
@@ -270,12 +271,13 @@ local function build(page)
         { key = "deaths", label = "deaths", x = 242, width = 44,  align = "RIGHT" },
         { key = "kicks",  label = "kicks",  x = 288, width = 44,  align = "RIGHT" },
         { key = "disp",   label = "disp",   x = 334, width = 44,  align = "RIGHT" },
-        { key = "dmg",    label = "dmg",    x = 380, width = 60,  align = "RIGHT" },
-        { key = "dps",    label = "dps",    x = 442, width = 54,  align = "RIGHT" },
-        { key = "heal",   label = "heal",   x = 498, width = 60,  align = "RIGHT" },
-        { key = "hps",    label = "hps",    x = 560, width = 54,  align = "RIGHT" },
+        { key = "def",    label = "def",    x = 380, width = 36,  align = "RIGHT" },
+        { key = "dmg",    label = "dmg",    x = 418, width = 56,  align = "RIGHT" },
+        { key = "dps",    label = "dps",    x = 476, width = 50,  align = "RIGHT" },
+        { key = "heal",   label = "heal",   x = 528, width = 56,  align = "RIGHT" },
+        { key = "hps",    label = "hps",    x = 586, width = 50,  align = "RIGHT" },
         -- No ordering to offer: it marks "you", nothing more.
-        { key = "flag",   label = "",       x = 616, width = 56,  align = "LEFT",
+        { key = "flag",   label = "",       x = 638, width = 40,  align = "LEFT",
           nosort = true },
     }
 
@@ -334,6 +336,9 @@ local function build(page)
         row.cells.deaths:SetText(tostring(obs.deaths or 0))
         row.cells.kicks:SetText(tostring(obs.interrupts or 0))
         row.cells.disp:SetText(tostring(obs.dispels or 0))
+        -- nil is "this run predates defensive capture"; 0 is
+        -- "tracked, none used". They are different claims.
+        row.cells.def:SetText(obs.defensives and tostring(obs.defensives) or "-")
         row.cells.dmg:SetText(short(obs.damage))
         row.cells.dps:SetText(short(ns.PerSecond(obs.damage, shownRecord)))
         row.cells.heal:SetText(short(obs.healing))

@@ -87,6 +87,7 @@ local function observationFor(record, guid, info)
             role = info and info.role ~= "NONE" and info.role or nil,
             isPlayer = info and info.isPlayer,
             deaths = 0, interrupts = 0, dispels = 0, damage = 0, healing = 0,
+            defensives = 0,
         }
         record.observations[guid] = obs
     end

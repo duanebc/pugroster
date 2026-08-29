@@ -2,6 +2,18 @@
 
 ## v1.0.6 -- unreleased
 
+- **Defensive cooldowns are counted, per player, per run.** A `def` column in the
+  run summary and the history table. Counted from auras rather than casts,
+  because this client will not say what a groupmate cast -- the spell id comes
+  back withheld, and so does the name if you hand that id back to the API. What
+  *lands* on somebody is legible, and for a defensive cooldown that is the same
+  event a moment later.
+- **Major cooldowns only.** Ironfur appeared 102 times in one key beside
+  Barkskin's 3. Both are defensives, but rotational mitigation and an emergency
+  button are different behaviours, and one number holding both would make every
+  Guardian druid look ten times more careful than a rogue. Personal cooldowns,
+  externals and raid-wides are counted; upkeep is not.
+
 - **A window with the group's numbers when a run is recorded.** Five players
   across seven columns is a table, and a table read as scrolling chat text is not
   a table -- particularly with a small chat frame. It opens when the record is

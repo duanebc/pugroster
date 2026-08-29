@@ -133,6 +133,8 @@ local function newObservation(guid, info)
         ilvl      = info and info.ilvl,
         isPlayer  = info and info.isPlayer,
         deaths = 0, wipes = 0, interrupts = 0, dispels = 0, ccCasts = 0,
+        -- Counted from auras rather than casts; see Capture/Defensives.lua.
+        defensives = 0,
         damage = 0, healing = 0,
         joinedAt = ns.Now(),
     }
