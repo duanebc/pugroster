@@ -120,6 +120,53 @@ local function unitIsGroup(unit)
     return unit == "player" or unit:match("^party[1-4]$") ~= nil
 end
 
+-- Can a *secret* spell ID still be used as a key?
+--
+-- Two different things are private here and only one has been established. The
+-- spell database is open -- GetSpellInfo(871) answers "Shield Wall" for anybody.
+-- What came back secret was the ID of a groupmate's cast, before any lookup.
+--
+-- That leaves a real question: Midnight lets some secret values be passed around
+-- opaquely even when they cannot be read, so a secret ID handed straight back to
+-- the API might still resolve. If the *name* comes back readable, a defensive
+-- list works after all -- we would be matching on names rather than IDs. If it
+-- comes back secret, or the call refuses it, the route is closed for good.
+--
+-- Answered once per run and recorded, since it is a property of the client
+-- rather than of any particular cast.
+local secretLookup
+
+local function testSecretLookup(id)
+    if secretLookup then return end
+    secretLookup = { attempted = true }
+
+    if not (C_Spell and C_Spell.GetSpellInfo) then
+        secretLookup.result = "no C_Spell.GetSpellInfo on this client"
+        return
+    end
+
+    local ok, info = pcall(C_Spell.GetSpellInfo, id)
+    if not ok then
+        secretLookup.result = "refused: " .. tostring(info)
+        return
+    end
+    if type(info) ~= "table" then
+        secretLookup.result = "returned " .. type(info) .. ", not a table"
+        return
+    end
+
+    local name = info.name
+    if ns.IsSecret(name) then
+        secretLookup.result = "resolves, but the name is secret too"
+    elseif name then
+        -- The interesting outcome, and the one that would reopen the feature.
+        secretLookup.result = "READABLE NAME from a secret id: " .. tostring(name)
+        secretLookup.usable = true
+    else
+        secretLookup.result = "resolves to a table with no name"
+    end
+end
+
 -- Spell names, so the log reads as "Shield Wall" rather than 871. The eventual
 -- DEFENSIVE_SPELLS table has to be written from something, and a list of what
 -- five real players actually pressed in a real key beats one assembled from
@@ -211,7 +258,14 @@ local function onEvent(_, event, unit, arg2, arg3)
     if event == "UNIT_SPELLCAST_SUCCEEDED" then
         -- (unitTarget, castGUID, spellID)
         local spellID = arg3
-        note("cast", unit, ns.IsSecret(spellID) and nil or spellID, ns.IsSecret(spellID))
+        local secret = ns.IsSecret(spellID)
+        -- Ask the one question the earlier runs left open, while the raw value is
+        -- still in hand -- note() drops it. A groupmate's cast is the only place
+        -- a secret id occurs, so this is the only place it can be tested.
+        if secret and unitIsGroup(unit) and unit ~= "player" then
+            testSecretLookup(spellID)
+        end
+        note("cast", unit, secret and nil or spellID, secret)
 
     elseif event == "UNIT_AURA" then
         seen.aura.events = seen.aura.events + 1
@@ -302,6 +356,8 @@ local function store(verdict)
         meters    = meters,
         sessions  = sessions,
         elapsed   = seen.elapsed,
+        secretLookup = secretLookup and {
+            result = secretLookup.result, usable = secretLookup.usable } or nil,
         cast      = { events = seen.cast.events, group = seen.cast.group,
                       readable = seen.cast.readable, secret = seen.cast.secret,
                       sample = seen.cast.sample, spells = spellList(seen.cast),
@@ -405,6 +461,13 @@ local function report()
         verdict = verdict .. "; no groupmate auras read"
     end
 
+    -- The answer to "are the lookups private too", which is a different question
+    -- from whether the id is.
+    if secretLookup then
+        say("|cff8f5fd6secret spell id, handed back to the API|r")
+        line(tostring(secretLookup.result))
+    end
+
     say("|cff8f5fd6verdict|r")
     line(verdict)
     line("if a damage-taken meter appeared in step 1, prefer that over both.")
@@ -437,6 +500,9 @@ function DefProbe.Show()
         line("   aura: %d events, %d group, %d readable, %d secret",
             r.aura.events, r.aura.group, r.aura.readable, r.aura.secret)
         line("   %s", tostring(r.verdict))
+        if r.secretLookup then
+            line("   secret-id lookup: %s", tostring(r.secretLookup.result))
+        end
     end
     DefProbe.verbose = was
 end
@@ -451,6 +517,7 @@ end
 function DefProbe.Watch(seconds)
     seconds = tonumber(seconds) or WATCH_SECONDS
 
+    secretLookup = nil
     seen = {
         seconds   = seconds,
         startedAt = ns.Now(),
