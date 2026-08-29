@@ -172,11 +172,17 @@ ns.OnInit(function()
             Inspect.Capture(guid, unit)
         end
 
-        -- Releasing the slot is good manners between addons, but not while the
-        -- player is reading it: their window can open between our request and
-        -- this reply, and clearing then empties every slot they are looking at.
-        -- Leaving it held costs nothing -- the next NotifyInspect replaces it.
-        if ClearInspectPlayer and not userIsInspecting() then
+        -- Only ever release a request we made. INSPECT_READY is broadcast to
+        -- every listener, so this fires for Blizzard's own inspect too -- and
+        -- clearing then throws away the data the player just asked for, before
+        -- their frame has drawn it.
+        --
+        -- Checking the frame is not enough on its own: Blizzard_InspectUI is
+        -- load-on-demand, so on the first inspect of a session InspectFrame does
+        -- not exist yet when the reply arrives, the guard sees nothing open, and
+        -- the slot is cleared out from under a window that is about to appear.
+        -- `guid` is nil for anybody else's request, which is the reliable test.
+        if guid and ClearInspectPlayer and not userIsInspecting() then
             ClearInspectPlayer()
         end
     end)
