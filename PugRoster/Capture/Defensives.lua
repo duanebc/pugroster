@@ -150,7 +150,14 @@ local function credit(unit, spellID)
     if not guid then return end
 
     local obs = activeObservation(guid)
-    if not obs then return end
+    if not obs then
+        -- The one drop that leaves no trace anywhere: the aura was recognised
+        -- but the record it belongs to has no row for this GUID. Counted, or a
+        -- GUID that never matches looks exactly like a spell list that never
+        -- matches.
+        Defensives.stats.noObs = Defensives.stats.noObs + 1
+        return
+    end
     obs.defensives = (obs.defensives or 0) + 1
 end
 
@@ -163,7 +170,26 @@ end
 -- they separate "the capture never ran" from "it ran and nothing matched", which
 -- look identical from the outside and want opposite fixes. Not persisted; they
 -- answer a question about the session you are in. `/pugdebug defstats`.
-Defensives.stats = { updates = 0, examined = 0, matched = 0, secretIds = 0 }
+-- Every point the count can be dropped gets its own counter, because a column of
+-- zeroes has six possible causes and they want six different fixes. `raw` is
+-- incremented before any guard, so "the event never fired" is finally
+-- distinguishable from "it fired and was filtered".
+--
+-- Cumulative across reloads: seeded from the stored record at init and written
+-- back by Persist. A run's evidence used to be destroyed by the reload done to
+-- go and read it -- the counters started at zero on load and the next
+-- PLAYER_ENTERING_WORLD wrote those zeros over the record.
+Defensives.stats = {
+    raw = 0,          -- UNIT_AURA reached the handler
+    noRecord = 0,     -- ...but no run or fight was open
+    notGroup = 0,     -- ...but the unit was not the player or a partymate
+    updates = 0,      -- passed both guards
+    examined = 0,     -- readable aura ids scanned
+    secretIds = 0,    -- aura ids withheld by the client
+    matched = 0,      -- transitions into a known defensive
+    noObs = 0,        -- matched, but no observation to credit it to
+    sessions = 0,
+}
 
 -- Auras seen on a groupmate that the list does not know, counted by id.
 --
@@ -258,7 +284,13 @@ local function currentDefensives(unit, out)
                 out[id] = true
             elseif unit ~= "player" and ns.Debug then
                 -- Development builds only; see the note above.
-                noteUnknown(id)
+                --
+                -- pcall'd so bookkeeping can never kill the scan. This runs
+                -- inside a pcall'd event handler, so anything raised here
+                -- abandons the remaining aura slots for that unit -- and the
+                -- first slot on a groupmate is always an unrecognised raid buff,
+                -- so one raise would cost every defensive on all four of them.
+                pcall(noteUnknown, id)
             end
         end
     end
@@ -268,7 +300,10 @@ end
 local scratch = {}
 
 local function onAura(unit)
-    if not unitIsGroup(unit) then return end
+    if not unitIsGroup(unit) then
+        Defensives.stats.notGroup = Defensives.stats.notGroup + 1
+        return
+    end
     Defensives.stats.updates = Defensives.stats.updates + 1
 
     local guid = ns.SafeGUID(UnitGUID(unit))
@@ -300,12 +335,17 @@ function Defensives.Reset()
 end
 
 -- Mirror the counters onto the database so they survive a reload as well.
+-- Counters are not a debug-build luxury: they are the only evidence of why a
+-- column of zeroes is zero, and they must be written even where Debug/ is
+-- stripped. Only the unknown-aura list stays development-only.
 function Defensives.Persist()
-    if not ns.db or not ns.Debug then return end
+    if not ns.db then return end
     local st = Defensives.stats
     ns.db.debugDefStats = {
+        raw = st.raw, noRecord = st.noRecord, notGroup = st.notGroup,
         updates = st.updates, examined = st.examined,
-        matched = st.matched, secretIds = st.secretIds,
+        secretIds = st.secretIds, matched = st.matched, noObs = st.noObs,
+        sessions = st.sessions,
         at = ns.Now(),
     }
 end
@@ -318,6 +358,18 @@ ns.OnInit(function()
     -- reload, which is exactly the distinction wanted.
     if not IsLoggedIn() then Defensives.ClearDebug() end
 
+    -- Carry the stored counters forward, so what a dungeon proved is still there
+    -- after the reload done to go and read it. Persist then only ever writes a
+    -- superset of what is already on disk.
+    local stored = ns.db and ns.db.debugDefStats
+    if stored then
+        for _, k in ipairs({ "raw", "noRecord", "notGroup", "updates", "examined",
+                             "secretIds", "matched", "noObs", "sessions" }) do
+            Defensives.stats[k] = tonumber(stored[k]) or 0
+        end
+    end
+    Defensives.stats.sessions = Defensives.stats.sessions + 1
+
     ns.RegisterEvent("PLAYER_ENTERING_WORLD", function()
         Defensives.Persist()
         Defensives.Reset()
@@ -326,9 +378,13 @@ ns.OnInit(function()
     ns.RegisterEvent("UNIT_AURA", function(unit, updateInfo)
         -- Only while something is being recorded. Outside a run this fires
         -- constantly for no purpose, and the guard is one table lookup.
+        Defensives.stats.raw = Defensives.stats.raw + 1
         local run = ns.RunTracker and ns.RunTracker.Active()
         local fight = ns.FightTracker and ns.FightTracker.Current and ns.FightTracker.Current()
-        if not run and not fight then return end
+        if not run and not fight then
+            Defensives.stats.noRecord = Defensives.stats.noRecord + 1
+            return
+        end
         onAura(unit)
     end)
 end)

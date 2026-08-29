@@ -322,13 +322,35 @@ SlashCmdList.PUGDEBUG = function(msg)
             Debug.Print("Capture/Defensives is not loaded.")
         else
             Debug.Print(string.format(
-                "aura updates %d; %d aura ids read, %d secret, %d defensive "
-                .. "applications counted.",
-                st.updates, st.examined, st.secretIds, st.matched))
-            if st.updates > 0 and st.examined == 0 then
-                Debug.Print("|cffd9a441no aura ids readable at all -- the "
-                    .. "capture cannot see auras, not a spell list problem.|r")
+                "over %d session(s): %d UNIT_AURA seen (%d outside a run, %d "
+                .. "not a groupmate); %d scanned, %d ids read, %d secret; %d "
+                .. "defensives matched, %d with nowhere to record them.",
+                st.sessions or 1, st.raw or 0, st.noRecord or 0, st.notGroup or 0,
+                st.updates, st.examined, st.secretIds, st.matched, st.noObs or 0))
+
+            -- Say which of the six it is, rather than leaving the reader to work
+            -- it out from eight numbers.
+            local verdict
+            if (st.raw or 0) == 0 then
+                verdict = "UNIT_AURA never reached the handler -- the event is "
+                    .. "not registered, or the client is withholding it."
+            elseif st.updates == 0 and (st.noRecord or 0) > 0 then
+                verdict = "the event fires, but no run or fight was ever open to "
+                    .. "record against -- the guard, not the capture."
+            elseif st.updates == 0 then
+                verdict = "the event fires but never for the player or a "
+                    .. "partymate -- unitIsGroup is rejecting everything."
+            elseif st.examined == 0 then
+                verdict = "no aura ids readable at all -- the capture cannot see "
+                    .. "auras, not a spell list problem."
+            elseif st.matched == 0 then
+                verdict = "auras are read but none is a known defensive -- this "
+                    .. "is the spell list. See the unrecognised ids below."
+            elseif (st.noObs or 0) >= st.matched then
+                verdict = "defensives are recognised but every one is dropped -- "
+                    .. "the GUID does not match any observation on the record."
             end
+            if verdict then Debug.Print("|cffd9a441" .. verdict .. "|r") end
 
             -- What it saw on groupmates and did not recognise, commonest
             -- first. This is the list to grow DEFENSIVE_AURAS from.
