@@ -720,8 +720,12 @@ SlashCmdList.PUGROSTER = function(msg)
     elseif cmd == "options" or cmd == "config" then
         ns.UI.Toggle("Options")
     elseif cmd == "rate" then
-        local n = ns.Rating.RecomputeAll()
+        local n, renamed = ns.Rating.RecomputeAll()
         ns.Print("recomputed provisional tiers for", n, "characters.")
+        if (renamed or 0) > 0 then
+            ns.Print(string.format("renamed %d %s to the character you have run "
+                .. "with most.", renamed, renamed == 1 and "person" or "persons"))
+        end
     elseif cmd == "unmerge" then
         -- Repairs databases damaged by the old link sync, which could stamp one
         -- account onto a character belonging to another and chain unrelated

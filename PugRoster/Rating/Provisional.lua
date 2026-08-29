@@ -334,13 +334,17 @@ function Rating.RecomputeAll()
     -- Last, because it reads the run and session counts the passes above just
     -- wrote: a person is named after the character you have run with most, and
     -- "most" is only known once this pass has finished counting.
+    local renamed = 0
     for _, person in pairs(ns.db.persons) do
-        ns.Roster.RefreshPersonName(person)
+        if ns.Roster.RefreshPersonName(person) then renamed = renamed + 1 end
     end
 
     ns.db.lastRated = ns.Now()
     if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
-    return touched
+    -- Renames are reported separately: `touched` counts characters the rating
+    -- pass had data for, which is a different and much smaller population than
+    -- the persons whose names were reconsidered.
+    return touched, renamed
 end
 
 --------------------------------------------------------------------------------
