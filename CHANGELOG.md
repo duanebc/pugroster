@@ -24,8 +24,11 @@
 - **Faction and spec are recorded and shown.** Faction was never captured -- it is
   only knowable while somebody is standing beside you, and nothing recovers it
   afterwards -- so it is taken with the group snapshot from now on. Both appear as
-  icons beside the name in the summary window rather than as columns, which keeps
-  the row narrow enough to also carry item level, defensives, and both rates.
+  icons in a narrow column of their own, ahead of the name, in both the summary
+  window and the history table. Their own cell rather than a prefix on the name,
+  because either can be missing -- an old record has no faction, an uninspected
+  pug has no spec -- and inside the name cell a missing one shifts that row out
+  of line with all the others.
 
 ## v1.0.5 -- 2026-08-29
 

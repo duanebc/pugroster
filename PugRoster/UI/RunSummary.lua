@@ -33,7 +33,10 @@ local WIDTH, ROW_H = 726, 18
 -- because those are different claims -- "not tracked" against "tracked, none
 -- used" -- and the whole point of the column is which one is true.
 local COLS = {
-    { key = "name",    label = "name",    x = 8,   width = 200, align = "LEFT"  },
+    -- Symbols first, in a fixed-width cell of their own so the names below
+    -- stay in a line whether or not a faction or spec is known.
+    { key = "sym",     label = "",        x = 8,   width = 34,  align = "LEFT"  },
+    { key = "name",    label = "name",    x = 44,  width = 164, align = "LEFT"  },
     { key = "role",    label = "role",    x = 212, width = 48,  align = "LEFT"  },
     { key = "ilvl",    label = "ilvl",    x = 262, width = 34,  align = "RIGHT" },
     { key = "deaths",  label = "deaths",  x = 300, width = 44,  align = "RIGHT" },
@@ -154,6 +157,7 @@ function RunSummary.Show(record)
 
     for i, obs in ipairs(list) do
         local row = rowAt(i)
+        row.cells.sym:SetText(ns.GroupSymbols(obs))
         row.cells.name:SetText(ns.GroupNameCell(obs))
         row.cells.role:SetText(ns.RoleLabel(obs.role))
         row.cells.ilvl:SetText(obs.ilvl and tostring(obs.ilvl) or "-")

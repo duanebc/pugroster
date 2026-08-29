@@ -266,7 +266,11 @@ local function build(page)
     -- Fixed pixel columns rather than padded strings: colour escape codes count
     -- toward string width, so %-22s on a coloured name never lines up.
     local GROUP_COLS = {
-        { key = "name",   label = "name",   x = 6,   width = 184, align = "LEFT" },
+        -- Symbols in their own fixed cell: either can be missing, and inside
+        -- the name cell a missing one shifts that row out of line.
+        { key = "sym",    label = "",       x = 6,   width = 34,  align = "LEFT",
+          nosort = true },
+        { key = "name",   label = "name",   x = 42,  width = 148, align = "LEFT" },
         { key = "role",   label = "role",   x = 192, width = 50,  align = "LEFT" },
         { key = "deaths", label = "deaths", x = 242, width = 44,  align = "RIGHT" },
         { key = "kicks",  label = "kicks",  x = 288, width = 44,  align = "RIGHT" },
@@ -331,6 +335,7 @@ local function build(page)
         return row
     end, function(row, obs)
         row.obs = obs
+        row.cells.sym:SetText(ns.GroupSymbols(obs))
         row.cells.name:SetText(ns.GroupNameCell(obs))
         row.cells.role:SetText(ns.RoleLabel(obs.role))
         row.cells.deaths:SetText(tostring(obs.deaths or 0))

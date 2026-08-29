@@ -401,11 +401,21 @@ function ns.SpecIcon(specID)
     return "|T" .. tostring(icon) .. ":14:14|t"
 end
 
--- The name as a group table shows it: what they are, then who they are.
+-- Faction then spec, as a pair of glyphs for a column of their own.
+--
+-- Their own column rather than a prefix on the name: either can be missing -- an
+-- old record has no faction, an uninspected pug has no spec -- and inside the
+-- name cell a missing one shifts that row's name left while every other row
+-- stays put. A fixed-width cell keeps the names in a line whatever is known.
+function ns.GroupSymbols(obs)
+    if not obs then return "" end
+    return ns.FactionIcon(obs.faction) .. ns.SpecIcon(obs.spec)
+end
+
+-- Just the name; the symbols travel in their own cell beside it.
 function ns.GroupNameCell(obs)
     if not obs then return "?" end
-    return ns.FactionIcon(obs.faction) .. ns.SpecIcon(obs.spec)
-        .. " " .. ns.NameWithRealm(obs.name, ns.ClassColor(obs.classFile))
+    return ns.NameWithRealm(obs.name, ns.ClassColor(obs.classFile))
 end
 
 function ns.RoleLabel(role)
