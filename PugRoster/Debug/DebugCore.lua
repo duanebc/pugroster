@@ -311,6 +311,7 @@ SlashCmdList.PUGDEBUG = function(msg)
         for _, line in ipairs(ns.DetailsBridge.Report(nil, args[2])) do ns.Print(line) end
 
     elseif cmd == "defstats" then
+        if ns.Defensives then ns.Defensives.Persist() end
         local st = ns.Defensives and ns.Defensives.stats
         if not st then
             Debug.Print("Capture/Defensives is not loaded.")
@@ -322,7 +323,25 @@ SlashCmdList.PUGDEBUG = function(msg)
             if st.updates > 0 and st.examined == 0 then
                 Debug.Print("|cffd9a441no aura ids readable at all -- the "
                     .. "capture cannot see auras, not a spell list problem.|r")
-            elseif st.examined > 0 and st.matched == 0 then
+            end
+
+            -- What it saw on groupmates and did not recognise, commonest
+            -- first. This is the list to grow DEFENSIVE_AURAS from.
+            local unknown = {}
+            for _, u in pairs(ns.Defensives.Unknown()) do unknown[#unknown + 1] = u end
+            table.sort(unknown, function(a, b) return a.count > b.count end)
+            if #unknown > 0 then
+                Debug.Print(string.format("%d unrecognised auras on groupmates:", #unknown))
+                for i = 1, math.min(#unknown, 25) do
+                    local u = unknown[i]
+                    ns.Print(string.format("    [%d] = true,  -- %s   (x%d)",
+                        u.id, tostring(u.name or "?"), u.count))
+                end
+                if #unknown > 25 then
+                    ns.Print(string.format("    ... and %d more", #unknown - 25))
+                end
+            end
+            if st.examined > 0 and st.matched == 0 then
                 Debug.Print("|cffd9a441auras seen but none in the list -- the "
                     .. "spell list is the problem, not the capture.|r")
             end

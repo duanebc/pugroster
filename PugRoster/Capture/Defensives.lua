@@ -26,12 +26,14 @@ ns.Defensives = Defensives
 -- so a gap is easy to spot.
 local DEFENSIVE_AURAS = {
     -- Death Knight
+    [194679] = true,  -- Rune Tap
     [48792]  = true,  -- Icebound Fortitude
     [48707]  = true,  -- Anti-Magic Shell
     [55233]  = true,  -- Vampiric Blood
     [49028]  = true,  -- Dancing Rune Weapon
     [51052]  = true,  -- Anti-Magic Zone
     -- Demon Hunter
+    [209258] = true,  -- Last Resort
     [198589] = true,  -- Blur
     [196718] = true,  -- Darkness
     [196555] = true,  -- Netherwalk
@@ -43,17 +45,24 @@ local DEFENSIVE_AURAS = {
     [102558] = true,  -- Incarnation: Guardian of Ursoc
     [22842]  = true,  -- Frenzied Regeneration
     -- Evoker
+    [357170] = true,  -- Time Dilation
     [363916] = true,  -- Obsidian Scales
     [374348] = true,  -- Renewing Blaze
     [374227] = true,  -- Zephyr
     -- Hunter
+    [53480]  = true,  -- Roar of Sacrifice
     [186265] = true,  -- Aspect of the Turtle
     [264735] = true,  -- Survival of the Fittest
     -- Mage
+    [11426]  = true,  -- Ice Barrier
+    [235450] = true,  -- Prismatic Barrier
+    [235313] = true,  -- Blazing Barrier
+    [414658] = true,  -- Ice Cold
     [45438]  = true,  -- Ice Block
     [110959] = true,  -- Greater Invisibility
     [110909] = true,  -- Alter Time
     -- Monk
+    [322507] = true,  -- Celestial Brew
     [115203] = true,  -- Fortifying Brew
     [122278] = true,  -- Dampen Harm
     [122783] = true,  -- Diffuse Magic
@@ -61,6 +70,8 @@ local DEFENSIVE_AURAS = {
     [116849] = true,  -- Life Cocoon
     [115176] = true,  -- Zen Meditation
     -- Paladin
+    [184662] = true,  -- Shield of Vengeance
+    [204018] = true,  -- Blessing of Spellwarding
     [642]    = true,  -- Divine Shield
     [498]    = true,  -- Divine Protection
     [31850]  = true,  -- Ardent Defender
@@ -69,20 +80,28 @@ local DEFENSIVE_AURAS = {
     [6940]   = true,  -- Blessing of Sacrifice
     [31821]  = true,  -- Aura Mastery
     -- Priest
+    [271466] = true,  -- Luminous Barrier
+    [586]    = true,  -- Fade
     [47585]  = true,  -- Dispersion
     [33206]  = true,  -- Pain Suppression
     [47788]  = true,  -- Guardian Spirit
     [19236]  = true,  -- Desperate Prayer
     [62618]  = true,  -- Power Word: Barrier
     -- Rogue
+    [1966]   = true,  -- Feint
+    [45182]  = true,  -- Cheating Death
     [31224]  = true,  -- Cloak of Shadows
     [5277]   = true,  -- Evasion
     [185311] = true,  -- Crimson Vial
     -- Shaman
+    [409293] = true,  -- Burrow
+    [8178]   = true,  -- Grounding Totem
     [108271] = true,  -- Astral Shift
     [98008]  = true,  -- Spirit Link Totem
     [198838] = true,  -- Earthen Wall Totem
     -- Warlock
+    [212295] = true,  -- Nether Ward
+    [6789]   = true,  -- Mortal Coil
     [104773] = true,  -- Unending Resolve
     [108416] = true,  -- Dark Pact
     -- Warrior
@@ -92,6 +111,10 @@ local DEFENSIVE_AURAS = {
     [97462]  = true,  -- Rallying Cry
     [23920]  = true,  -- Spell Reflection
     [184364] = true,  -- Enraged Regeneration
+    -- Racials, which are defensives that no class block owns.
+    [20594]  = true,  -- Stoneform
+    [59544]  = true,  -- Gift of the Naaru
+    [265221] = true,  -- Fireblood
 }
 
 Defensives.SPELLS = DEFENSIVE_AURAS
@@ -142,6 +165,40 @@ end
 -- answer a question about the session you are in. `/pugdebug defstats`.
 Defensives.stats = { updates = 0, examined = 0, matched = 0, secretIds = 0 }
 
+-- Auras seen on a groupmate that the list does not know, counted by id.
+--
+-- Three rounds of this feature were spent guessing which spells were missing.
+-- The client knows, so it may as well say: run a dungeon, read the list, add
+-- what belongs. Only groupmates, because your own buffs are not the gap.
+--
+-- Kept on the database rather than in a local, so it survives to disk on the
+-- next reload and can be read straight out of SavedVariables. A chat window
+-- holds about a screen of this; a dungeon produces several.
+--
+-- Recorded only in a development build. Debug/ is stripped from releases, so
+-- ns.Debug is nil there and nobody else's database collects any of it.
+local function unknownStore()
+    if not ns.db then return nil end
+    ns.db.debugDefUnknown = ns.db.debugDefUnknown or {}
+    return ns.db.debugDefUnknown
+end
+
+function Defensives.Unknown() return (ns.db and ns.db.debugDefUnknown) or {} end
+
+local function noteUnknown(id)
+    local store = unknownStore()
+    if not store then return end
+    local key = tostring(id)
+    local u = store[key]
+    if u then u.count = u.count + 1; return end
+    local name
+    if C_Spell and C_Spell.GetSpellInfo then
+        local ok, info = pcall(C_Spell.GetSpellInfo, id)
+        if ok and type(info) == "table" then name = info.name end
+    end
+    store[key] = { id = id, name = name, count = 1 }
+end
+
 -- What is currently up, per unit: [unit][spellID] = true, defensives only.
 local active = {}
 
@@ -168,7 +225,12 @@ local function currentDefensives(unit, out)
             Defensives.stats.secretIds = Defensives.stats.secretIds + 1
         elseif id ~= nil then
             Defensives.stats.examined = Defensives.stats.examined + 1
-            if DEFENSIVE_AURAS[id] then out[id] = true end
+            if DEFENSIVE_AURAS[id] then
+                out[id] = true
+            elseif unit ~= "player" and ns.Debug then
+                -- Development builds only; see the note above.
+                noteUnknown(id)
+            end
         end
     end
     return out
@@ -205,11 +267,25 @@ function Defensives.Reset()
     wipe(active)
 end
 
+-- Mirror the counters onto the database so they survive a reload as well.
+function Defensives.Persist()
+    if not ns.db or not ns.Debug then return end
+    local st = Defensives.stats
+    ns.db.debugDefStats = {
+        updates = st.updates, examined = st.examined,
+        matched = st.matched, secretIds = st.secretIds,
+        at = ns.Now(),
+    }
+end
+
 ns.OnInit(function()
     -- party2 is a different person after somebody leaves; their defensives are
     -- not still up just because the token is still there.
     ns.RegisterEvent("GROUP_ROSTER_UPDATE", Defensives.Reset)
-    ns.RegisterEvent("PLAYER_ENTERING_WORLD", Defensives.Reset)
+    ns.RegisterEvent("PLAYER_ENTERING_WORLD", function()
+        Defensives.Persist()
+        Defensives.Reset()
+    end)
 
     ns.RegisterEvent("UNIT_AURA", function(unit, updateInfo)
         -- Only while something is being recorded. Outside a run this fires
