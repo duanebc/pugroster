@@ -343,6 +343,13 @@ SlashCmdList.PUGDEBUG = function(msg)
             elseif st.examined == 0 then
                 verdict = "no aura ids readable at all -- the capture cannot see "
                     .. "auras, not a spell list problem."
+                if st.scanStop then
+                    verdict = verdict .. " Scan stopped at " .. tostring(st.scanStop)
+                end
+                if (st.nilIds or 0) > 0 then
+                    verdict = verdict .. (" %d aura(s) carried no spellId.")
+                        :format(st.nilIds)
+                end
             elseif st.matched == 0 then
                 verdict = "auras are read but none is a known defensive -- this "
                     .. "is the spell list. See the unrecognised ids below."
@@ -351,6 +358,21 @@ SlashCmdList.PUGDEBUG = function(msg)
                     .. "the GUID does not match any observation on the record."
             end
             if verdict then Debug.Print("|cffd9a441" .. verdict .. "|r") end
+
+            -- Ask the API directly, here and now. The counters are a record of
+            -- what happened; this is what happens.
+            if ns.Defensives.Probe then
+                Debug.Print("live scan of the player:")
+                for _, line in ipairs(ns.Defensives.Probe("player")) do
+                    ns.Print("  " .. line)
+                end
+                if UnitExists("party1") then
+                    Debug.Print("live scan of party1:")
+                    for _, line in ipairs(ns.Defensives.Probe("party1")) do
+                        ns.Print("  " .. line)
+                    end
+                end
+            end
 
             -- What it saw on groupmates and did not recognise, commonest
             -- first. This is the list to grow DEFENSIVE_AURAS from.

@@ -188,7 +188,9 @@ Defensives.stats = {
     secretIds = 0,    -- aura ids withheld by the client
     matched = 0,      -- transitions into a known defensive
     noObs = 0,        -- matched, but no observation to credit it to
+    nilIds = 0,       -- aura tables that carried no spellId at all
     sessions = 0,
+    scanStop = nil,   -- why the first aura scan stopped, verbatim
 }
 
 -- Auras seen on a groupmate that the list does not know, counted by id.
@@ -271,11 +273,32 @@ local active = {}
 -- same answer, because the answer comes from the unit rather than the payload.
 local function currentDefensives(unit, out)
     wipe(out)
-    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return out end
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
+        Defensives.stats.scanStop = Defensives.stats.scanStop
+            or "C_UnitAuras.GetAuraDataByIndex is not available"
+        return out
+    end
     for i = 1, 60 do
         local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
-        if not ok or type(aura) ~= "table" then break end
+        -- Why the scan stopped, recorded once. The pcall exists so a restricted
+        -- read cannot kill the handler, but it also swallowed the reason -- and
+        -- "read nothing" and "read nothing because the call errors" look
+        -- identical from the counters. First failure only: this runs twenty
+        -- thousand times a session and the first answer is the answer.
+        if not ok or type(aura) ~= "table" then
+            local st = Defensives.stats
+            if not st.scanStop then
+                st.scanStop = ("slot %d: %s"):format(i,
+                    (not ok) and ("error: " .. tostring(aura))
+                            or ("returned " .. type(aura)))
+            end
+            break
+        end
         local id = aura.spellId
+        if id == nil then
+            -- A table with no spellId: the read works but the field is gone.
+            Defensives.stats.nilIds = (Defensives.stats.nilIds or 0) + 1
+        end
         if id ~= nil and ns.IsSecret(id) then
             Defensives.stats.secretIds = Defensives.stats.secretIds + 1
         elseif id ~= nil then
@@ -294,6 +317,41 @@ local function currentDefensives(unit, out)
             end
         end
     end
+    return out
+end
+
+-- What the aura API returns for a unit, right now, in words. The counters say
+-- the scan reads nothing; this says what "nothing" is, without waiting for
+-- another dungeon to fill a counter in.
+function Defensives.Probe(unit)
+    unit = unit or "player"
+    local out = {}
+    if not C_UnitAuras then return { "C_UnitAuras does not exist" } end
+    if not C_UnitAuras.GetAuraDataByIndex then
+        return { "C_UnitAuras exists but GetAuraDataByIndex does not" }
+    end
+    if not UnitExists(unit) then return { unit .. " does not exist" } end
+    for i = 1, 5 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
+        if not ok then
+            out[#out + 1] = ("slot %d: call failed -- %s"):format(i, tostring(aura))
+            break
+        elseif type(aura) ~= "table" then
+            out[#out + 1] = ("slot %d: returned %s (scan stops here)")
+                :format(i, type(aura))
+            break
+        else
+            local id = aura.spellId
+            local shown
+            if id == nil then shown = "spellId is nil"
+            elseif ns.IsSecret(id) then shown = "spellId is secret"
+            else shown = ("spellId %s%s"):format(tostring(id),
+                DEFENSIVE_AURAS[id] and " (a tracked defensive)" or "")
+            end
+            out[#out + 1] = ("slot %d: %s"):format(i, shown)
+        end
+    end
+    if #out == 0 then out[1] = "no slots returned anything" end
     return out
 end
 
@@ -345,6 +403,7 @@ function Defensives.Persist()
         raw = st.raw, noRecord = st.noRecord, notGroup = st.notGroup,
         updates = st.updates, examined = st.examined,
         secretIds = st.secretIds, matched = st.matched, noObs = st.noObs,
+        nilIds = st.nilIds, scanStop = st.scanStop,
         sessions = st.sessions,
         at = ns.Now(),
     }
@@ -364,7 +423,7 @@ ns.OnInit(function()
     local stored = ns.db and ns.db.debugDefStats
     if stored then
         for _, k in ipairs({ "raw", "noRecord", "notGroup", "updates", "examined",
-                             "secretIds", "matched", "noObs", "sessions" }) do
+                             "secretIds", "matched", "noObs", "nilIds", "sessions" }) do
             Defensives.stats[k] = tonumber(stored[k]) or 0
         end
     end
