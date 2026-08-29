@@ -97,16 +97,39 @@ local function onUnitTooltip(tip)
     if tip ~= GameTooltip and tip ~= GameTooltipTooltip then return end
     local _, unit = tip:GetUnit()
     if not unit or not UnitIsPlayer(unit) then return end
-    Tooltip.Decorate(tip, UnitGUID(unit))
+
+    -- SafeGUID, not the raw value. Midnight hands out secret GUIDs, and a secret
+    -- must be tested for secrecy before it is touched at all -- Decorate's first
+    -- act is `not guid`, which is a boolean test. Even where that does not raise,
+    -- a secret matches no character in the roster, so the person lookup fails and
+    -- the whole block is dropped: tier, runs together, item level and all.
+    local guid = ns.SafeGUID(UnitGUID(unit))
+    if not guid then return end
+    Tooltip.Decorate(tip, guid)
+end
+
+-- Why the block did not appear. The hook below swallows everything so a raise
+-- can never break a tooltip -- which is right, and also meant a tooltip that
+-- silently stopped decorating left no trace at all. Report the first failure in
+-- a development build; Debug/ is stripped from releases, so players get the
+-- silence they should.
+local reportedTooltipError = false
+local function noteTooltipError(err)
+    if reportedTooltipError or not ns.Debug then return end
+    reportedTooltipError = true
+    ns.Print("|cffff5555tooltip error|r (reported once):", tostring(err))
 end
 
 ns.OnInit(function()
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tip)
-            local ok = pcall(onUnitTooltip, tip)
-            if not ok then --[[ never break a tooltip ]] end
+            local ok, err = pcall(onUnitTooltip, tip)
+            if not ok then noteTooltipError(err) end
         end)
     elseif GameTooltip and GameTooltip.HookScript then
-        GameTooltip:HookScript("OnTooltipSetUnit", function(tip) pcall(onUnitTooltip, tip) end)
+        GameTooltip:HookScript("OnTooltipSetUnit", function(tip)
+            local ok, err = pcall(onUnitTooltip, tip)
+            if not ok then noteTooltipError(err) end
+        end)
     end
 end)
