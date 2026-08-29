@@ -218,7 +218,17 @@ local function noteUnknown(id)
     store[key] = { id = id, name = name, count = 1 }
 end
 
--- What is currently up, per unit: [unit][spellID] = true, defensives only.
+-- What is currently up, keyed by GUID: [guid][spellID] = true, defensives only.
+--
+-- By GUID rather than by unit token, because a token is a slot and a slot changes
+-- hands. Keying by "party2" meant wiping the whole table whenever the roster
+-- changed -- and GROUP_ROSTER_UPDATE fires often in a dungeon, each time making
+-- every defensive still ticking look newly applied. That inflates counts rather
+-- than losing them, which is the more insidious direction: nobody notices a
+-- number that is too high.
+--
+-- A GUID is the person. If party2 becomes somebody else, their auras simply have
+-- nothing to compare against and start clean, with no wiping required.
 local active = {}
 
 -- Read the defensives on a unit right now.
@@ -261,9 +271,12 @@ local function onAura(unit)
     if not unitIsGroup(unit) then return end
     Defensives.stats.updates = Defensives.stats.updates + 1
 
+    local guid = ns.SafeGUID(UnitGUID(unit))
+    if not guid then return end
+
     local now = currentDefensives(unit, scratch)
-    local was = active[unit]
-    if not was then was = {}; active[unit] = was end
+    local was = active[guid]
+    if not was then was = {}; active[guid] = was end
 
     -- Count the transitions into "up". Re-reading the same aura on the next
     -- update is not a second use of it, and that is the whole reason the previous
@@ -279,9 +292,9 @@ local function onAura(unit)
     for id in pairs(now) do was[id] = true end
 end
 
--- A unit token is a slot, not a person: party2 is somebody else after a leave, so
--- their auras must not read as still up. Cleared on roster changes and when a
--- record closes.
+-- Only between visits. Keyed by GUID, the table needs no clearing when the roster
+-- changes -- and clearing it then was what let a still-ticking defensive be
+-- counted a second time.
 function Defensives.Reset()
     wipe(active)
 end
@@ -305,9 +318,6 @@ ns.OnInit(function()
     -- reload, which is exactly the distinction wanted.
     if not IsLoggedIn() then Defensives.ClearDebug() end
 
-    -- party2 is a different person after somebody leaves; their defensives are
-    -- not still up just because the token is still there.
-    ns.RegisterEvent("GROUP_ROSTER_UPDATE", Defensives.Reset)
     ns.RegisterEvent("PLAYER_ENTERING_WORLD", function()
         Defensives.Persist()
         Defensives.Reset()
