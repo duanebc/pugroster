@@ -287,6 +287,54 @@ function Roster.AllPersons()
     return list
 end
 
+-- Which character a person should be *known* by, as opposed to which one they
+-- are on right now.
+--
+-- A person was named after whichever character happened to create the record and
+-- then never renamed, so a five-alt player ended up filed under the alt he last
+-- logged in on. That is the cause behind four separate faults: a roster row
+-- bearing a stranger's name, a search for "san" answering "Unbroken", a join
+-- toast announcing somebody unrecognisable, and a detail pane that looked like it
+-- had linked the wrong people. Each was patched where it showed; this is the
+-- thing that was actually wrong.
+--
+-- The character you have run with most is the one you know them by -- not the
+-- newest, which changes every time they swap alts, and not the first, which is an
+-- accident of when you met. Ties fall to shared sessions, then to who was seen
+-- most recently, then to the name itself so the answer is stable across refreshes
+-- rather than depending on `pairs` order.
+local function betterKnown(c, best)
+    if not best then return true end
+    local cr, br = c.runs or 0, best.runs or 0
+    if cr ~= br then return cr > br end
+    local cg, bg = c.grouped or 0, best.grouped or 0
+    if cg ~= bg then return cg > bg end
+    local cs, bs = c.lastSeen or 0, best.lastSeen or 0
+    if cs ~= bs then return cs > bs end
+    return (c.name or "") < (best.name or "")
+end
+
+function Roster.BestKnownCharacter(person)
+    if not person then return nil end
+    local best
+    for guid in pairs(person.characters or {}) do
+        local c = Roster.GetCharacter(guid)
+        if c and c.name and betterKnown(c, best) then best = c end
+    end
+    return best
+end
+
+-- Returns true when the name changed. Safe to call repeatedly.
+function Roster.RefreshPersonName(person)
+    if not person then return false end
+    local c = Roster.BestKnownCharacter(person)
+    local short = c and ns.ShortName(c.name)
+    if not short or short == "" or short == "?" then return false end
+    if person.name == short then return false end
+    person.name = short
+    return true
+end
+
 -- The character we show for a person: most recently seen.
 function Roster.MainCharacter(person)
     if not person then return nil end

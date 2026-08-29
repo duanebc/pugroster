@@ -331,6 +331,13 @@ function Rating.RecomputeAll()
         char.grouped = grouped[guid] and grouped[guid].sessions or nil
     end
 
+    -- Last, because it reads the run and session counts the passes above just
+    -- wrote: a person is named after the character you have run with most, and
+    -- "most" is only known once this pass has finished counting.
+    for _, person in pairs(ns.db.persons) do
+        ns.Roster.RefreshPersonName(person)
+    end
+
     ns.db.lastRated = ns.Now()
     if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
     return touched
