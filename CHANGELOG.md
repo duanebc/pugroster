@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.4 -- unreleased
+## v1.0.4 -- 2026-08-29
 
 - **Right-click anyone in a run's group list.** The History tab is where you form
   an opinion about somebody, and the row was a dead end. It now offers their
