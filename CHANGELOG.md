@@ -7,9 +7,11 @@
   and PugRoster's background item-level queue was taking it: it would request an
   inspect of a groupmate while your own inspect window was open, then call
   `ClearInspectPlayer` when the reply arrived, which releases the data your frame
-  was drawing from. The queue now pauses while that window is open -- nobody is
-  dropped from it, they just wait -- and the slot is never released out from
-  under a window you are reading.
+  was drawing from. Worse, INSPECT_READY is broadcast to every listener, so the
+  addon released the slot even for inspects it had not requested -- discarding
+  what you had just asked for, before the frame had drawn it. The queue now
+  pauses while that window is open, nobody is dropped from it, and the slot is
+  only ever released for a request PugRoster actually made.
 
 ## v1.0.4 -- 2026-08-29
 
