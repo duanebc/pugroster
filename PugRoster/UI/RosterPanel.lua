@@ -571,13 +571,27 @@ local function buildDetail(parent)
     -- The server answers asynchronously and refuses with "Player not found" for a
     -- character that is not currently online, so check the friends list a moment
     -- later and report what actually happened rather than claiming success.
-    local friendBtn = UI.Button(d, "Add friend", 100, function()
+    local friendBtn = UI.Button(d, "Add friend", 78, function()
         local person = ns.Roster.GetPerson(state.selected)
         local char = person and ns.Roster.MainCharacter(person)
         if char and char.name then ns.Roster.AddFriendByName(char.name) end
     end)
     friendBtn:SetPoint("TOPLEFT", chars, "BOTTOMLEFT", -2, -6)
     friendBtn:SetHeight(18)
+
+    -- The account, not the character. Add friend above watches one character;
+    -- this watches whichever one they log into, which is what you want for
+    -- somebody you would run with again. It shares the row rather than taking
+    -- one of its own, for the reason given below.
+    local bnetBtn = UI.Button(d, "Add B.net", 78, function()
+        local person = ns.Roster.GetPerson(state.selected)
+        local char = person and ns.Roster.MainCharacter(person)
+        ns.Roster.AddBNetFriend(person and ns.Roster.BattleTagFor(person),
+            char and char.name)
+    end)
+    bnetBtn:SetPoint("LEFT", friendBtn, "RIGHT", 6, 0)
+    bnetBtn:SetHeight(18)
+    d.bnetBtn = bnetBtn
 
     -- Linking used to offer every person you had ever met in one column. At 179
     -- people that menu is 3,500px tall, so SetClampedToScreen showed roughly A
@@ -587,8 +601,8 @@ local function buildDetail(parent)
     -- has to fit a note, the characters, two button rows and a tier breakdown
     -- inside 500px, and every line this block spends is one the breakdown does
     -- not get.
-    local linkBox = UI.EditBox(d, 170, function() UI.Refresh() end)
-    linkBox:SetPoint("LEFT", friendBtn, "RIGHT", 6, 0)
+    local linkBox = UI.EditBox(d, 126, function() UI.Refresh() end)
+    linkBox:SetPoint("LEFT", bnetBtn, "RIGHT", 6, 0)
     linkBox:SetScript("OnTextChanged", function(self, user)
         if not user then return end
         state.linkSearch = self:GetText() or ""

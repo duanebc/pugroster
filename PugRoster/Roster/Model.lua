@@ -55,7 +55,8 @@ function Roster.TouchCharacter(guid, info)
                            -- Faction persists on the character so a record that
                            -- never learned it can still be drawn correctly.
                            "faction",
-                           "ilvl", "bnetAccountID", "debug", "isSelf", "fromFriendList" }) do
+                           "ilvl", "bnetAccountID", "battleTag", "debug", "isSelf",
+                           "fromFriendList" }) do
         if info[key] ~= nil then char[key] = info[key] end
     end
     -- Only a real sighting moves lastSeen. An empty info table means "give me
@@ -169,6 +170,72 @@ function Roster.AddFriendByName(name)
         if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
     end)
     return true
+end
+
+-- The BattleTag we have written down for a person, if any.
+--
+-- There is no way to ask the client for a stranger's: it exposes one for people
+-- already on your friends list and for nobody else. So this only ever answers
+-- for somebody you have been Battle.net friends with at some point, which is
+-- exactly the case worth answering -- re-adding someone you dropped.
+function Roster.BattleTagFor(person)
+    if not person then return nil end
+    for guid in pairs(person.characters or {}) do
+        local char = Roster.GetCharacter(guid)
+        local tag = char and char.battleTag
+        if tag and not ns.IsSecret(tag) and tag ~= "" then return tag end
+    end
+    return nil
+end
+
+-- Are we already Battle.net friends with this person? Their account id is only
+-- ever set from our own friends list, so its presence is the answer.
+function Roster.IsBNetFriend(person)
+    if not person then return false end
+    for guid in pairs(person.characters or {}) do
+        local char = Roster.GetCharacter(guid)
+        if char and char.bnetAccountID then return true end
+    end
+    return false
+end
+
+-- Send a Battle.net friend request.
+--
+-- With a tag this is direct. Without one it cannot be: a Battle.net request
+-- needs a BattleTag or an email, and the client will not tell an addon a
+-- stranger's -- deliberately, and character name is not a substitute, because
+-- the friends list treats a name as a character request and that only ever
+-- reports one character being online. So the honest fallback is to open
+-- Blizzard's own dialog and say why it is empty.
+--
+-- The difference matters for what the player actually asked for: a character
+-- friend shows that character online, a Battle.net friend shows the account,
+-- whichever character they are on.
+function Roster.AddBNetFriend(tag, who)
+    if tag and not ns.IsSecret(tag) and tag ~= "" then
+        local send = (C_BattleNet and C_BattleNet.SendFriendInvite) or BNSendFriendInvite
+        if not send then
+            ns.Print("this client has no Battle.net invite API. Add "
+                .. "|cffffff00" .. tag .. "|r from the friends list.")
+            return false
+        end
+        send(tag)
+        ns.Print("sent a Battle.net friend request to |cff9b7fd6" .. tag .. "|r.")
+        return true
+    end
+
+    ns.Print(string.format("no BattleTag on file for %s. The client only gives "
+        .. "an addon the BattleTag of someone already on your friends list, so "
+        .. "this has to be pasted in -- ask them for it, and a Battle.net friend "
+        .. "then shows the account online whichever character they are on.",
+        who or "them"))
+
+    if StaticPopup_Show and StaticPopupDialogs and StaticPopupDialogs["ADD_FRIEND"] then
+        StaticPopup_Show("ADD_FRIEND")
+    elseif ToggleFriendsFrame then
+        ToggleFriendsFrame(1)
+    end
+    return false
 end
 
 function Roster.IsSelf(person)
@@ -880,6 +947,14 @@ function Roster.SyncBNetLinks()
                     and (char.bnetAccountID == nil
                          or char.bnetAccountID == acct.bnetAccountID) then
                     char.bnetAccountID = acct.bnetAccountID
+                    -- Kept because it is the only thing that can re-add them.
+                    -- The client exposes a BattleTag for people already on your
+                    -- friends list and for nobody else, so the moment they come
+                    -- off the list it is gone for good unless it was written
+                    -- down while it was there.
+                    if acct.battleTag and not ns.IsSecret(acct.battleTag) then
+                        char.battleTag = acct.battleTag
+                    end
                     local prev = byAccount[acct.bnetAccountID]
                     if prev and prev ~= guid then
                         if Roster.LinkCharacters(prev, guid) then linked = linked + 1 end
