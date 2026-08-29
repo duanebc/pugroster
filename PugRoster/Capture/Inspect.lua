@@ -93,8 +93,16 @@ function Inspect.Capture(guid, unit)
 
     if info.role == "NONE" then info.role = nil end
 
+    -- Faction is only knowable from the unit, so take it here too: an inspect
+    -- can land for somebody the group snapshot missed.
+    if UnitFactionGroup then info.faction = UnitFactionGroup(unit) or nil end
+
     ns.Roster.TouchCharacter(guid, info)
     ns.RunTracker.UpdateObservation(guid, info)
+    -- A dungeon that is not a key is a fight, and it wants the same answers.
+    if ns.FightTracker and ns.FightTracker.UpdateObservation then
+        ns.FightTracker.UpdateObservation(guid, info)
+    end
     return info
 end
 

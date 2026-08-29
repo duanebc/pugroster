@@ -168,6 +168,7 @@ local function closeSegment()
             guid = guid, name = info.name, class = info.class,
             classFile = info.classFile,
             role = info.role ~= "NONE" and info.role or nil,
+            faction = info.faction,
             isPlayer = info.isPlayer,
             deaths = 0, interrupts = 0, dispels = 0, damage = 0, healing = 0,
         }
@@ -215,6 +216,19 @@ function FightTracker.Trim()
 end
 
 function FightTracker.Current() return current end
+
+-- Inspect results reach a fight the same way they reach a key. Without this a
+-- timewalking or heroic run has no spec and no item level on anybody -- the
+-- inspect landed, and only RunTracker was listening.
+function FightTracker.UpdateObservation(guid, info)
+    if not current or not guid or not info then return end
+    local obs = current.observations and current.observations[guid]
+    if not obs then return end
+    for _, key in ipairs({ "name", "class", "classFile", "role", "spec", "specName",
+                           "ilvl", "faction" }) do
+        if info[key] ~= nil and info[key] ~= "NONE" then obs[key] = info[key] end
+    end
+end
 
 function FightTracker.Wipe()
     local n = #ns.db.fights

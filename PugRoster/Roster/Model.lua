@@ -52,6 +52,9 @@ function Roster.TouchCharacter(guid, info)
     end
 
     for _, key in ipairs({ "name", "class", "classFile", "spec", "specName", "role",
+                           -- Faction persists on the character so a record that
+                           -- never learned it can still be drawn correctly.
+                           "faction",
                            "ilvl", "bnetAccountID", "debug", "isSelf", "fromFriendList" }) do
         if info[key] ~= nil then char[key] = info[key] end
     end

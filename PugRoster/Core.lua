@@ -409,7 +409,23 @@ end
 -- stays put. A fixed-width cell keeps the names in a line whatever is known.
 function ns.GroupSymbols(obs)
     if not obs then return "" end
-    return ns.FactionIcon(obs.faction) .. ns.SpecIcon(obs.spec)
+
+    local faction, spec = obs.faction, obs.spec
+
+    -- Fall back to the character record when the observation never learned them.
+    -- An inspect can miss -- out of range for the whole run, or the key ended
+    -- first -- and a record written before either field existed has neither. The
+    -- character is the same person either way, and what we learned about them on
+    -- some other night is still true tonight.
+    if not (faction and spec) and obs.guid and ns.Roster then
+        local c = ns.Roster.GetCharacter(obs.guid)
+        if c then
+            faction = faction or c.faction
+            spec    = spec or c.spec
+        end
+    end
+
+    return ns.FactionIcon(faction) .. ns.SpecIcon(spec)
 end
 
 -- Just the name; the symbols travel in their own cell beside it.
