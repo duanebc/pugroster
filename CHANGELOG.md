@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.0.5 -- 2026-08-29
+
+- **Inspecting somebody yourself no longer comes back empty.** The model loaded
+  and every equipment slot was blank. The inspect API is a single global slot,
+  and PugRoster's background item-level queue was taking it: it would request an
+  inspect of a groupmate while your own inspect window was open, then call
+  `ClearInspectPlayer` when the reply arrived, which releases the data your frame
+  was drawing from. The queue now pauses while that window is open -- nobody is
+  dropped from it, they just wait -- and the slot is never released out from
+  under a window you are reading.
+
 ## v1.0.4 -- 2026-08-29
 
 - **Right-click anyone in a run's group list.** The History tab is where you form

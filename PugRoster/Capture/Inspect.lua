@@ -17,6 +17,15 @@ local queue, queued = {}, {}
 local pending, pendingSince, pendingUnit
 local ticker
 
+-- Is the player looking at Blizzard's inspect window right now?
+--
+-- InspectFrame is load-on-demand -- Blizzard_InspectUI does not exist until the
+-- first inspect -- so a nil frame means nobody has opened one this session and
+-- there is nothing to disturb.
+local function userIsInspecting()
+    return InspectFrame and InspectFrame:IsShown() and true or false
+end
+
 local function unitForGUID(guid)
     if UnitGUID("player") == guid then return "player" end
     for i = 1, 4 do
@@ -99,6 +108,19 @@ local function drain()
     if not guid then return end
     queued[guid] = nil
 
+    -- Never while the player has Blizzard's own inspect window open. The inspect
+    -- API is a single global slot: our request takes it out from under theirs,
+    -- and the ClearInspectPlayer that follows releases the data their frame is
+    -- drawing from -- the model stays, every item slot empties. The queue is not
+    -- dropped, just not drained; whoever is in it waits until the window closes.
+    if userIsInspecting() then
+        if not queued[guid] then
+            queued[guid] = true
+            table.insert(queue, guid)
+        end
+        return
+    end
+
     local unit = unitForGUID(guid)
     ns.Trace("inspect:range")
     if not unit or not CanInspect(unit) or not CheckInteractDistance(unit, 1) then
@@ -149,7 +171,14 @@ ns.OnInit(function()
         if guid and unit and UnitExists(unit) then
             Inspect.Capture(guid, unit)
         end
-        if ClearInspectPlayer then ClearInspectPlayer() end
+
+        -- Releasing the slot is good manners between addons, but not while the
+        -- player is reading it: their window can open between our request and
+        -- this reply, and clearing then empties every slot they are looking at.
+        -- Leaving it held costs nothing -- the next NotifyInspect replaces it.
+        if ClearInspectPlayer and not userIsInspecting() then
+            ClearInspectPlayer()
+        end
     end)
 
     -- The queue used to run only while a key was in progress, so a party
