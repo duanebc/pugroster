@@ -108,9 +108,13 @@ local function activeObservation(guid)
     if run and run.observations and run.observations[guid] then
         return run.observations[guid]
     end
-    local fight = ns.FightTracker and ns.FightTracker.Current and ns.FightTracker.Current()
-    if fight and fight.observations and fight.observations[guid] then
-        return fight.observations[guid]
+    -- A fight's observations are only created when a pull ends, so during the
+    -- first pull of a visit there is nothing to write to yet. Create it rather
+    -- than dropping the count -- otherwise every defensive used before the first
+    -- boss died was silently discarded, which is most of them in a short dungeon.
+    if ns.FightTracker and ns.FightTracker.EnsureObservation
+        and ns.FightTracker.Current and ns.FightTracker.Current() then
+        return ns.FightTracker.EnsureObservation(guid)
     end
     return nil
 end
