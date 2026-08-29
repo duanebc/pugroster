@@ -286,11 +286,16 @@ local function currentDefensives(unit, out)
         -- identical from the counters. First failure only: this runs twenty
         -- thousand times a session and the first answer is the answer.
         if not ok or type(aura) ~= "table" then
+            -- An error is always worth recording. Running out of auras is not:
+            -- every healthy scan ends on a nil, so recording that would fill the
+            -- field with "returned nil" on the first mouseover and mask the real
+            -- failure behind it. The one exception is slot 1 -- stopping there
+            -- means nothing was readable at all, which is a finding.
             local st = Defensives.stats
-            if not st.scanStop then
+            if not st.scanStop and (not ok or i == 1) then
                 st.scanStop = ("slot %d: %s"):format(i,
                     (not ok) and ("error: " .. tostring(aura))
-                            or ("returned " .. type(aura)))
+                            or ("returned " .. type(aura) .. " -- nothing readable"))
             end
             break
         end
@@ -385,11 +390,34 @@ local function onAura(unit)
     for id in pairs(now) do was[id] = true end
 end
 
+-- Units whose auras changed since the last scan, and the ticker that drains
+-- them. Set by the event, read here -- see the note on the registration below
+-- for why the scan cannot happen in the handler itself.
+local dirty = {}
+local scanTicker
+local SCAN_INTERVAL = 0.25
+
+local function scanDirty()
+    if not next(dirty) then return end
+
+    -- Re-checked per drain rather than trusted from when the unit was marked:
+    -- a visit can end between the aura landing and this running.
+    local run = ns.RunTracker and ns.RunTracker.Active()
+    local fight = ns.FightTracker and ns.FightTracker.Current and ns.FightTracker.Current()
+
+    for unit in pairs(dirty) do
+        dirty[unit] = nil
+        if run or fight then onAura(unit) end
+    end
+end
+
 -- Only between visits. Keyed by GUID, the table needs no clearing when the roster
 -- changes -- and clearing it then was what let a still-ticking defensive be
 -- counted a second time.
 function Defensives.Reset()
     wipe(active)
+    -- Units marked during the visit that just ended have nowhere to land now.
+    wipe(dirty)
 end
 
 -- Mirror the counters onto the database so they survive a reload as well.
@@ -434,16 +462,45 @@ ns.OnInit(function()
         Defensives.Reset()
     end)
 
-    ns.RegisterEvent("UNIT_AURA", function(unit, updateInfo)
-        -- Only while something is being recorded. Outside a run this fires
-        -- constantly for no purpose, and the guard is one table lookup.
+    ns.RegisterEvent("UNIT_AURA", function(unit)
+        -- Note the unit and get out. The scan happens on the ticker instead,
+        -- because it cannot happen here: 34,340 attempts from inside this
+        -- handler read nothing at all, every one refused with
+        --
+        --   GetAuraDataByIndex(): Auras cannot be accessed when secret while
+        --   tainted by 'PugRoster'
+        --
+        -- while the identical call on the identical units, made from a slash
+        -- command seconds later, returned every aura. Same function, same units,
+        -- same addon -- so it is the execution context that is refused, not the
+        -- read. The event payload is never touched here, and `updateInfo` is no
+        -- longer even named: the answer comes from the unit, and the less of a
+        -- secret-bearing payload this handler is in reach of, the better.
         Defensives.stats.raw = Defensives.stats.raw + 1
+
+        if not unitIsGroup(unit) then
+            Defensives.stats.notGroup = Defensives.stats.notGroup + 1
+            return
+        end
+
+        -- Still gated on something being open to record against: outside a run
+        -- this fires constantly for no purpose.
         local run = ns.RunTracker and ns.RunTracker.Active()
         local fight = ns.FightTracker and ns.FightTracker.Current and ns.FightTracker.Current()
         if not run and not fight then
             Defensives.stats.noRecord = Defensives.stats.noRecord + 1
             return
         end
-        onAura(unit)
+
+        dirty[unit] = true
     end)
+
+    -- One ticker, outside the event dispatch entirely. It coalesces as well as
+    -- it escapes: a dungeon fires UNIT_AURA sixty thousand times, and this scans
+    -- each changed unit at most four times a second -- twenty scans a second at
+    -- the very worst, against the twenty thousand the handler was attempting.
+    --
+    -- Defensives that matter last six to twenty seconds, so a quarter-second
+    -- delay in noticing one costs nothing.
+    scanTicker = scanTicker or C_Timer.NewTicker(SCAN_INTERVAL, scanDirty)
 end)
