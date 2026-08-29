@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.0.6 -- unreleased
+
+- **A window with the group's numbers when a run is recorded.** Five players
+  across seven columns is a table, and a table read as scrolling chat text is not
+  a table -- particularly with a small chat frame. It opens when the record is
+  actually enriched rather than at the completion screen, because the server
+  withholds damage and healing until the key is behind you and a window at
+  completion would faithfully report a row of zeroes. Ordinary dungeons get one
+  too. Movable, closable, and switchable off in Options.
+
 ## v1.0.5 -- 2026-08-29
 
 - **Inspecting somebody yourself no longer comes back empty.** The model loaded

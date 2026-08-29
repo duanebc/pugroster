@@ -103,6 +103,10 @@ ns.DEFAULTS = {
         -- Display
         showTooltip          = true,
         showJoinPopup        = true,
+        -- The group's numbers in a window when a run is recorded. Shown
+        -- then rather than at the completion screen because the server
+        -- withholds damage and healing until the key is behind you.
+        showRunSummary       = true,
         showLFGBadge         = true,
         -- Messaging
         sendStagger          = 1.5,   -- seconds between whispers

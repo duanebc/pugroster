@@ -327,6 +327,9 @@ function RunTracker.Finalize(run, result)
                 -- Say so. Silence is indistinguishable from failure, and this
                 -- path has been silently failing for most of its life.
                 ns.Print("recorded this run's combat stats.")
+                -- Now, not at completion: this is the first moment the
+                -- numbers exist to put in a window.
+                if ns.RunSummary then ns.RunSummary.Show(run) end
                 return
             end
 

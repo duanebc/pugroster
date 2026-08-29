@@ -44,6 +44,7 @@ UI\SendPanel.lua
 UI\Options.lua
 UI\Tooltip.lua
 UI\JoinPopup.lua
+UI\RunSummary.lua
 UI\LFGBadge.lua
 
 # Companion-generated enrichment. The checked-in stub is an empty table, so the

@@ -193,6 +193,12 @@ local function closeSegment()
             if ok and applied then
                 accumulate(record, segment)
                 if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+                -- An ordinary dungeon is a fight, not a key, so it reaches the
+                -- summary window through here rather than through RunTracker --
+                -- a timewalking run has numbers worth reading too.
+                if ns.RunSummary and record.content == "dungeon" then
+                    ns.RunSummary.Show(record)
+                end
                 return
             end
             if tries < 4 then
