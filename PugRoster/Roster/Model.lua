@@ -709,6 +709,22 @@ end
 
 -- Map of "Name-Realm" -> { online = true, bnet = accountID or nil }.
 -- Rebuilt on demand; the friends list is cheap to walk and always current.
+-- Is this friends-list game account safe to read, and a WoW character?
+--
+-- Every field here can come back secret, and a secret raises on a boolean test
+-- just as it does on a comparison -- `if game.isOnline` is as dangerous as
+-- `name == ""`. So secrecy is checked before anything is tested, and a record
+-- with any withheld field is skipped whole rather than half-read.
+local function usableGameAccount(game)
+    if not game then return false end
+    if ns.IsSecret(game.isOnline) or ns.IsSecret(game.clientProgram)
+        or ns.IsSecret(game.characterName) then
+        return false
+    end
+    return (game.isOnline and game.clientProgram == BNET_CLIENT_WOW
+        and game.characterName) and true or false
+end
+
 function Roster.OnlineIndex()
     -- Debug builds can stand in a synthetic friends list so the send panel has
     -- recipients without anyone real being online.
@@ -723,7 +739,7 @@ function Roster.OnlineIndex()
     for i = 1, numBN do
         local acct = C_BattleNet and C_BattleNet.GetFriendAccountInfo(i)
         local game = acct and acct.gameAccountInfo
-        if game and game.isOnline and game.clientProgram == BNET_CLIENT_WOW and game.characterName then
+        if usableGameAccount(game) then
             local full = ns.FullName(game.characterName, game.realmName and game.realmName:gsub("%s+", ""))
             if full then
                 index[full] = { online = true, bnet = acct.bnetAccountID,
@@ -843,7 +859,7 @@ function Roster.SyncBNetLinks()
     for i = 1, numBN do
         local acct = C_BattleNet and C_BattleNet.GetFriendAccountInfo(i)
         local game = acct and acct.gameAccountInfo
-        if game and game.isOnline and game.clientProgram == BNET_CLIENT_WOW and game.characterName then
+        if usableGameAccount(game) then
             -- Only when the friends list actually told us the realm. Without it
             -- ns.FullName falls back to *our* realm, so a friend on an unknown
             -- realm becomes "Name-OurRealm" and can collide with a completely

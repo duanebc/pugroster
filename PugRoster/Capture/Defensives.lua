@@ -143,14 +143,24 @@ end
 local function onAura(unit, updateInfo)
     if not unitIsGroup(unit) then return end
     if type(updateInfo) ~= "table" then return end
-    if updateInfo.isFullUpdate then return end
 
+    -- `isFullUpdate` is deliberately never read.
+    --
+    -- It comes back a *secret boolean*, and a secret cannot be tested for truth
+    -- any more than it can be compared -- `if updateInfo.isFullUpdate then`
+    -- raises "attempt to perform boolean test on a secret boolean value". Same
+    -- trap as comparing a secret string to "": the danger is touching the value
+    -- at all, not the particular operator.
+    --
+    -- No matter: a full update carries no addedAuras, so the absence of that
+    -- list is the same signal, arrived at without asking a forbidden question.
     local added = updateInfo.addedAuras
-    if type(added) ~= "table" then return end
+    if ns.IsSecret(added) or type(added) ~= "table" then return end
 
     for _, aura in ipairs(added) do
-        if type(aura) == "table" and aura.spellId then
-            credit(unit, aura.spellId)
+        if type(aura) == "table" then
+            local id = aura.spellId
+            if id ~= nil and not ns.IsSecret(id) then credit(unit, id) end
         end
     end
 end
