@@ -201,6 +201,7 @@ local USAGE = {
     "  |cffffff00details|r [meter] -- what the server and Details answer; name a meter (deaths, interrupts) to narrow it",
     "  |cffffff00defprobe|r [seconds] -- which API can still see defensive cooldowns, over a fixed window",
     "  |cffffff00defprobe start|r/|cffffff00stop|r -- the same, open-ended, for a whole key; |cffffff00show|r lists runs, |cffffff00clear|r drops them",
+    "  |cffffff00defprobe verbose|r -- runs record quietly by default; this prints the report as it finishes",
     "  |cffffff00wipe|r [fake] -- clear everything, or only simulated records",
     "  |cffffff00popup|r [on|off] -- show or silence the blocked-action popup while debugging",
 }
@@ -314,6 +315,9 @@ SlashCmdList.PUGDEBUG = function(msg)
         elseif sub == "clear" then ns.DefProbe.Clear()
         elseif sub == "start" then ns.DefProbe.Start()
         elseif sub == "stop" then ns.DefProbe.Stop()
+        elseif sub == "verbose" then
+            ns.DefProbe.verbose = not ns.DefProbe.verbose
+            Debug.Print("defprobe chatter", ns.DefProbe.verbose and "on" or "off")
         else ns.DefProbe.Run(args[2]) end
 
     elseif cmd == "wipe" then

@@ -36,8 +36,22 @@ local WATCH_SECONDS = 20
 -- settle whether it is legible; far short of what a dungeon would otherwise cost.
 local AURA_SAMPLE_CAP = 40
 
+-- Quiet by default. The probe used to dump its whole report into chat the moment
+-- its window elapsed, which is fine when you are watching for it and not fine
+-- when the macro that starts it is on an action bar -- thirty seconds later a
+-- wall of meter names arrives in the middle of a pull. Everything is still
+-- recorded; `defprobe show` prints it when you actually want to read it.
+DefProbe.verbose = false
+
 local function line(fmt, ...)
+    if not DefProbe.verbose then return end
     ns.Print("   " .. (select("#", ...) > 0 and string.format(fmt, ...) or fmt))
+end
+
+-- For the handful of lines that are headings rather than detail.
+local function say(text)
+    if not DefProbe.verbose then return end
+    ns.Print(text)
 end
 
 local function yn(v) return v and "|cff40d060yes|r" or "|cffff5555no|r" end
@@ -51,7 +65,7 @@ local function yn(v) return v and "|cff40d060yes|r" or "|cffff5555no|r" end
 -- you need is never the one that got truncated away; here the unfiltered list is
 -- the entire point.
 function DefProbe.MeterTypes()
-    ns.Print("|cff8f5fd61. C_DamageMeter meter types|r")
+    say("|cff8f5fd61. C_DamageMeter meter types|r")
 
     local names = ns.DetailsBridge and ns.DetailsBridge.MeterTypeNames()
     if type(names) ~= "table" or next(names) == nil then
@@ -75,7 +89,7 @@ function DefProbe.MeterTypes()
         return
     end
 
-    ns.Print(string.format("|cff8f5fd6   live sessions (restriction: %s)|r",
+    say(string.format("|cff8f5fd6   live sessions (restriction: %s)|r",
         tostring(ns.DetailsBridge.RestrictionState() or "n/a")))
     if #sessions == 0 then
         line("none -- run this just after a pull, not on a loading screen")
@@ -317,7 +331,7 @@ local function report()
         { key = "aura", label = "3. UNIT_AURA" },
     }) do
         local s = seen[b.key]
-        ns.Print("|cff8f5fd6" .. b.label .. "|r")
+        say("|cff8f5fd6" .. b.label .. "|r")
         line("fired at all:        %s  (%d event%s)", yn(s.events > 0), s.events,
             s.events == 1 and "" or "s")
         line("fired for the group: %s  (%d)", yn(s.group > 0), s.group)
@@ -391,7 +405,7 @@ local function report()
         verdict = verdict .. "; no groupmate auras read"
     end
 
-    ns.Print("|cff8f5fd6verdict|r")
+    say("|cff8f5fd6verdict|r")
     line(verdict)
     line("if a damage-taken meter appeared in step 1, prefer that over both.")
 
@@ -403,10 +417,15 @@ end
 
 -- What every run so far found, so several attempts can be compared without
 -- having kept the chat frame open.
+-- `show` is somebody asking to read it, so it prints in full whatever the
+-- quiet default says.
 function DefProbe.Show()
+    local was = DefProbe.verbose
+    DefProbe.verbose = true
     local runs = ns.db and ns.db.debugProbe
     if type(runs) ~= "table" or #runs == 0 then
         ns.Print("no probe runs stored yet -- |cffffff00/pugdebug defprobe|r records one")
+        DefProbe.verbose = was
         return
     end
     ns.Print(string.format("|cff8f5fd6%d probe run%s|r", #runs, #runs == 1 and "" or "s"))
@@ -419,6 +438,7 @@ function DefProbe.Show()
             r.aura.events, r.aura.group, r.aura.readable, r.aura.secret)
         line("   %s", tostring(r.verdict))
     end
+    DefProbe.verbose = was
 end
 
 function DefProbe.Clear()
@@ -446,7 +466,7 @@ function DefProbe.Watch(seconds)
     watcher:RegisterEvent("UNIT_AURA")
 
     if seconds > 0 then
-        ns.Print(string.format("|cff8f5fd6watching for %d seconds|r -- pull something "
+        say(string.format("|cff8f5fd6watching for %d seconds|r -- pull something "
             .. "and press defensives, your own and a groupmate's", seconds))
         -- Guarded: stopping early already reported, and a timer that fires
         -- afterwards must not report the same run twice.
@@ -460,7 +480,7 @@ function DefProbe.Watch(seconds)
 end
 
 function DefProbe.Run(seconds)
-    ns.Print("|cff8f5fd6PugRoster defensive-capture probe|r")
+    say("|cff8f5fd6PugRoster defensive-capture probe|r")
     DefProbe.MeterTypes()
     DefProbe.Watch(seconds)
 end
@@ -469,7 +489,7 @@ end
 -- fires; it is not enough to see what five people actually press over a key,
 -- which is the list the feature has to be built from.
 function DefProbe.Start()
-    ns.Print("|cff8f5fd6PugRoster defensive-capture probe|r")
+    say("|cff8f5fd6PugRoster defensive-capture probe|r")
     DefProbe.MeterTypes()
     DefProbe.Watch(0)
 end
