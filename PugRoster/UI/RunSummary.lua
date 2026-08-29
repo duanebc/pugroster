@@ -18,20 +18,57 @@ local UI = ns.UI
 local RunSummary = {}
 ns.RunSummary = RunSummary
 
-local WIDTH, ROW_H = 560, 18
+local WIDTH, ROW_H = 726, 18
 
--- Same shape as the History group table, narrower: this is a glance, not a
--- browser. Rates are computed rather than stored, as they are there.
+-- Wider than the History table on purpose: this window has the screen to itself
+-- for a moment, so it can afford the columns the panel has to leave out.
+--
+-- Faction and spec ride inside the name cell as icons rather than taking columns
+-- of their own. Both are recognised faster than they are read, and a spec name
+-- is the widest text on the row for something a 14px glyph carries perfectly.
+--
+-- `def` is defensive cooldowns. The column is here and the data is not, yet:
+-- groupmate spell ids come back secret on this client and the probe is still
+-- deciding whether anything can be done about it. It reads "-" rather than "0",
+-- because those are different claims -- "not tracked" against "tracked, none
+-- used" -- and the whole point of the column is which one is true.
 local COLS = {
-    { key = "name",   label = "name",   x = 8,   width = 170, align = "LEFT"  },
-    { key = "role",   label = "role",   x = 182, width = 46,  align = "LEFT"  },
-    { key = "deaths", label = "deaths", x = 230, width = 44,  align = "RIGHT" },
-    { key = "kicks",  label = "kicks",  x = 276, width = 44,  align = "RIGHT" },
-    { key = "disp",   label = "disp",   x = 322, width = 40,  align = "RIGHT" },
-    { key = "dmg",    label = "dmg",    x = 364, width = 58,  align = "RIGHT" },
-    { key = "dps",    label = "dps",    x = 424, width = 50,  align = "RIGHT" },
-    { key = "heal",   label = "heal",   x = 476, width = 58,  align = "RIGHT" },
+    { key = "name",    label = "name",    x = 8,   width = 200, align = "LEFT"  },
+    { key = "role",    label = "role",    x = 212, width = 48,  align = "LEFT"  },
+    { key = "ilvl",    label = "ilvl",    x = 262, width = 34,  align = "RIGHT" },
+    { key = "deaths",  label = "deaths",  x = 300, width = 44,  align = "RIGHT" },
+    { key = "kicks",   label = "kicks",   x = 346, width = 44,  align = "RIGHT" },
+    { key = "disp",    label = "disp",    x = 392, width = 40,  align = "RIGHT" },
+    { key = "def",     label = "def",     x = 434, width = 36,  align = "RIGHT" },
+    { key = "dmg",     label = "dmg",     x = 472, width = 62,  align = "RIGHT" },
+    { key = "dps",     label = "dps",     x = 536, width = 54,  align = "RIGHT" },
+    { key = "heal",    label = "heal",    x = 592, width = 62,  align = "RIGHT" },
+    { key = "hps",     label = "hps",     x = 656, width = 54,  align = "RIGHT" },
 }
+
+local FACTION_ICON = {
+    Alliance = "|TInterface\\PVPFrame\\PVP-Currency-Alliance:14:14|t",
+    Horde    = "|TInterface\\PVPFrame\\PVP-Currency-Horde:14:14|t",
+}
+
+-- The spec's own icon, from the spec id captured on inspect. Falls back to
+-- nothing rather than a placeholder: an empty slot reads as "not known", a
+-- question-mark icon reads as a spec.
+local function specIcon(obs)
+    local id = obs.spec
+    if not id or not GetSpecializationInfoByID then return "" end
+    local ok, _, _, _, icon = pcall(GetSpecializationInfoByID, id)
+    if not ok or not icon then return "" end
+    return "|T" .. tostring(icon) .. ":14:14|t"
+end
+
+-- Icons first, then the name: the eye scans the left edge for "which of them is
+-- this", and a fixed-width pair of glyphs keeps the names aligned under it.
+local function nameCell(obs)
+    return (FACTION_ICON[obs.faction] or "")
+        .. specIcon(obs)
+        .. " " .. ns.NameWithRealm(obs.name, ns.ClassColor(obs.classFile))
+end
 
 local frame
 
@@ -141,14 +178,19 @@ function RunSummary.Show(record)
 
     for i, obs in ipairs(list) do
         local row = rowAt(i)
-        row.cells.name:SetText(ns.NameWithRealm(obs.name, ns.ClassColor(obs.classFile)))
+        row.cells.name:SetText(nameCell(obs))
         row.cells.role:SetText(ns.RoleLabel(obs.role))
+        row.cells.ilvl:SetText(obs.ilvl and tostring(obs.ilvl) or "-")
         row.cells.deaths:SetText(tostring(obs.deaths or 0))
         row.cells.kicks:SetText(tostring(obs.interrupts or 0))
         row.cells.disp:SetText(tostring(obs.dispels or 0))
+        -- nil means the run predates defensive capture, or the client will not
+        -- give it to us; 0 would claim nobody pressed anything.
+        row.cells.def:SetText(obs.defensives and tostring(obs.defensives) or "-")
         row.cells.dmg:SetText(ns.FormatCount(obs.damage))
         row.cells.dps:SetText(ns.FormatCount(ns.PerSecond(obs.damage, record)))
         row.cells.heal:SetText(ns.FormatCount(obs.healing))
+        row.cells.hps:SetText(ns.FormatCount(ns.PerSecond(obs.healing, record)))
         row:Show()
     end
     for i = #list + 1, #f.rows do f.rows[i]:Hide() end

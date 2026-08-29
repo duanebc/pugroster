@@ -9,6 +9,11 @@
   withholds damage and healing until the key is behind you and a window at
   completion would faithfully report a row of zeroes. Ordinary dungeons get one
   too. Movable, closable, and switchable off in Options.
+- **Faction and spec are recorded and shown.** Faction was never captured -- it is
+  only knowable while somebody is standing beside you, and nothing recovers it
+  afterwards -- so it is taken with the group snapshot from now on. Both appear as
+  icons beside the name in the summary window rather than as columns, which keeps
+  the row narrow enough to also carry item level, defensives, and both rates.
 
 ## v1.0.5 -- 2026-08-29
 

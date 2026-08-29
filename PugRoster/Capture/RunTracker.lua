@@ -109,6 +109,9 @@ function RunTracker.SnapshotGroup()
                     class     = class,
                     classFile = classFile,
                     role      = UnitGroupRolesAssigned(unit),
+                    -- Captured here because it is only knowable while they are
+                    -- standing next to you; nothing recovers it afterwards.
+                    faction   = UnitFactionGroup and UnitFactionGroup(unit) or nil,
                     isPlayer  = (unit == "player") or nil,
                 }
             end
@@ -124,6 +127,7 @@ local function newObservation(guid, info)
         class     = info and info.class,
         classFile = info and info.classFile,
         role      = info and info.role ~= "NONE" and info.role or nil,
+        faction   = info and info.faction,
         spec      = info and info.spec,
         specName  = info and info.specName,
         ilvl      = info and info.ilvl,
