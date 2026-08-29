@@ -201,6 +201,7 @@ local USAGE = {
     "  |cffffff00details|r [meter] -- what the server and Details answer; name a meter (deaths, interrupts) to narrow it",
     "  |cffffff00defprobe|r [seconds] -- which API can still see defensive cooldowns, over a fixed window",
     "  |cffffff00defprobe start|r/|cffffff00stop|r -- the same, open-ended, for a whole key; |cffffff00show|r lists runs, |cffffff00clear|r drops them",
+    "  |cffffff00defstats|r -- did the defensive capture see anything, and where did it stop",
     "  |cffffff00defprobe verbose|r -- runs record quietly by default; this prints the report as it finishes",
     "  |cffffff00wipe|r [fake] -- clear everything, or only simulated records",
     "  |cffffff00popup|r [on|off] -- show or silence the blocked-action popup while debugging",
@@ -308,6 +309,24 @@ SlashCmdList.PUGDEBUG = function(msg)
     elseif cmd == "details" then
         Debug.Print("Details report:")
         for _, line in ipairs(ns.DetailsBridge.Report(nil, args[2])) do ns.Print(line) end
+
+    elseif cmd == "defstats" then
+        local st = ns.Defensives and ns.Defensives.stats
+        if not st then
+            Debug.Print("Capture/Defensives is not loaded.")
+        else
+            Debug.Print(string.format(
+                "aura updates %d, of which %d carried addedAuras; %d aura ids "
+                .. "examined, %d secret, %d matched the defensive list.",
+                st.updates, st.withAdded, st.examined, st.secretIds, st.matched))
+            if st.updates > 0 and st.withAdded == 0 then
+                Debug.Print("|cffd9a441addedAuras never arrived -- the payload "
+                    .. "shape is the problem, not the spell list.|r")
+            elseif st.examined > 0 and st.matched == 0 then
+                Debug.Print("|cffd9a441auras seen but none in the list -- the "
+                    .. "spell list is the problem, not the capture.|r")
+            end
+        end
 
     elseif cmd == "defprobe" then
         local sub = (args[2] or ""):lower()

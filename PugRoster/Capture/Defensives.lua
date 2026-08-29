@@ -132,6 +132,12 @@ local function unitIsGroup(unit)
     return unit == "player" or unit:match("^party[1-4]$") ~= nil
 end
 
+-- Plain counters, so a column of zeroes can be explained rather than guessed at:
+-- they separate "the capture never ran" from "it ran and nothing matched", which
+-- look identical from the outside and want opposite fixes. Not persisted; they
+-- answer a question about the session you are in. `/pugdebug defstats`.
+Defensives.stats = { updates = 0, withAdded = 0, examined = 0, matched = 0, secretIds = 0 }
+
 -- The event's own payload is the cheap path and the accurate one. `addedAuras`
 -- is exactly the set that just landed, so there is nothing to diff and no risk of
 -- counting an aura twice because something else about the unit changed.
@@ -143,6 +149,7 @@ end
 local function onAura(unit, updateInfo)
     if not unitIsGroup(unit) then return end
     if type(updateInfo) ~= "table" then return end
+    Defensives.stats.updates = Defensives.stats.updates + 1
 
     -- `isFullUpdate` is deliberately never read.
     --
@@ -156,11 +163,20 @@ local function onAura(unit, updateInfo)
     -- list is the same signal, arrived at without asking a forbidden question.
     local added = updateInfo.addedAuras
     if ns.IsSecret(added) or type(added) ~= "table" then return end
+    Defensives.stats.withAdded = Defensives.stats.withAdded + 1
 
     for _, aura in ipairs(added) do
         if type(aura) == "table" then
             local id = aura.spellId
-            if id ~= nil and not ns.IsSecret(id) then credit(unit, id) end
+            if id ~= nil and ns.IsSecret(id) then
+                Defensives.stats.secretIds = Defensives.stats.secretIds + 1
+            elseif id ~= nil then
+                Defensives.stats.examined = Defensives.stats.examined + 1
+                if DEFENSIVE_AURAS[id] then
+                    Defensives.stats.matched = Defensives.stats.matched + 1
+                end
+                credit(unit, id)
+            end
         end
     end
 end

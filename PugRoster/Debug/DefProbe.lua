@@ -510,6 +510,17 @@ function DefProbe.Show()
                     add("           %-10s readable %-4d secret %d",
                         tostring(u.unit), u.readable or 0, u.secret or 0)
                 end
+                -- Which auras, not just how many. This is what says whether a
+                -- defensive was ever on anybody, and whether our list knows it.
+                local spells = b.spells or {}
+                for i = 1, math.min(#spells, 14) do
+                    local sp = spells[i]
+                    add("             %-30s [%s] x%d",
+                        tostring(sp.name or "?"), tostring(sp.id), sp.count or 0)
+                end
+                if #spells > 14 then
+                    add("             ... and %d more", #spells - 14)
+                end
             end
         end
         if r.secretLookup then
