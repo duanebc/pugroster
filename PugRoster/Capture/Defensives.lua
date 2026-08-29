@@ -177,6 +177,13 @@ Defensives.stats = { updates = 0, examined = 0, matched = 0, secretIds = 0 }
 --
 -- Recorded only in a development build. Debug/ is stripped from releases, so
 -- ns.Debug is nil there and nobody else's database collects any of it.
+-- Hard cap. Housekeeping measures the whole database against a 5MB budget and
+-- trims *runs* when it is over, so debug data left to grow would quietly cost
+-- history -- which is the one thing it must never do. A hundred and fifty
+-- distinct auras is far more than a dungeon produces and about 10KB; past that,
+-- counts on what is already known keep rising and nothing new is added.
+local MAX_UNKNOWN = 150
+
 local function unknownStore()
     if not ns.db then return nil end
     ns.db.debugDefUnknown = ns.db.debugDefUnknown or {}
@@ -185,12 +192,24 @@ end
 
 function Defensives.Unknown() return (ns.db and ns.db.debugDefUnknown) or {} end
 
+-- Throw it away. It is a note to whoever is reading the log, not a record.
+function Defensives.ClearDebug()
+    if not ns.db then return end
+    ns.db.debugDefUnknown = nil
+    ns.db.debugDefStats = nil
+end
+
 local function noteUnknown(id)
     local store = unknownStore()
     if not store then return end
     local key = tostring(id)
     local u = store[key]
     if u then u.count = u.count + 1; return end
+
+    local n = 0
+    for _ in pairs(store) do n = n + 1 end
+    if n >= MAX_UNKNOWN then return end
+
     local name
     if C_Spell and C_Spell.GetSpellInfo then
         local ok, info = pcall(C_Spell.GetSpellInfo, id)
@@ -279,6 +298,13 @@ function Defensives.Persist()
 end
 
 ns.OnInit(function()
+    -- A fresh login drops whatever the last session collected, the same rule the
+    -- simulated data follows. It exists to be read once and then acted on; a
+    -- reload keeps it, because that is how it gets to disk to be read at all.
+    -- IsLoggedIn() is false during the first login's ADDON_LOADED and true on a
+    -- reload, which is exactly the distinction wanted.
+    if not IsLoggedIn() then Defensives.ClearDebug() end
+
     -- party2 is a different person after somebody leaves; their defensives are
     -- not still up just because the token is still there.
     ns.RegisterEvent("GROUP_ROSTER_UPDATE", Defensives.Reset)

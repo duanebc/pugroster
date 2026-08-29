@@ -201,7 +201,7 @@ local USAGE = {
     "  |cffffff00details|r [meter] -- what the server and Details answer; name a meter (deaths, interrupts) to narrow it",
     "  |cffffff00defprobe|r [seconds] -- which API can still see defensive cooldowns, over a fixed window",
     "  |cffffff00defprobe start|r/|cffffff00stop|r -- the same, open-ended, for a whole key; |cffffff00show|r lists runs, |cffffff00clear|r drops them",
-    "  |cffffff00defstats|r -- did the defensive capture see anything, and where did it stop",
+    "  |cffffff00defstats|r [clear] -- what the defensive capture saw, and which auras it did not recognise",
     "  |cffffff00defprobe verbose|r -- runs record quietly by default; this prints the report as it finishes",
     "  |cffffff00wipe|r [fake] -- clear everything, or only simulated records",
     "  |cffffff00popup|r [on|off] -- show or silence the blocked-action popup while debugging",
@@ -311,6 +311,11 @@ SlashCmdList.PUGDEBUG = function(msg)
         for _, line in ipairs(ns.DetailsBridge.Report(nil, args[2])) do ns.Print(line) end
 
     elseif cmd == "defstats" then
+        if (args[2] or ""):lower() == "clear" then
+            if ns.Defensives then ns.Defensives.ClearDebug() end
+            Debug.Print("defensive debug data cleared.")
+            return
+        end
         if ns.Defensives then ns.Defensives.Persist() end
         local st = ns.Defensives and ns.Defensives.stats
         if not st then
