@@ -83,7 +83,7 @@ function Tooltip.Decorate(tip, guid)
 
 end
 
-local function onUnitTooltip(tip)
+local function onUnitTooltip(tip, data)
     -- The setting gates the whole hook, not just the lines we add. Checking it
     -- inside Decorate left GetUnit() still running with the feature switched
     -- off, which made "turn off tooltips" useless as a way to rule this hook out.
@@ -95,16 +95,31 @@ local function onUnitTooltip(tip)
     if ns.IsForbidden(tip) then return end
     ns.Trace("tooltip:unit")
     if tip ~= GameTooltip and tip ~= GameTooltipTooltip then return end
-    local _, unit = tip:GetUnit()
-    if not unit or not UnitIsPlayer(unit) then return end
 
-    -- SafeGUID, not the raw value. Midnight hands out secret GUIDs, and a secret
-    -- must be tested for secrecy before it is touched at all -- Decorate's first
-    -- act is `not guid`, which is a boolean test. Even where that does not raise,
-    -- a secret matches no character in the roster, so the person lookup fails and
-    -- the whole block is dropped: tier, runs together, item level and all.
-    local guid = ns.SafeGUID(UnitGUID(unit))
+    -- Take the GUID the tooltip data carries, and never touch the unit token.
+    --
+    -- Midnight marks the token from GetUnit() secret, and passing a secret to
+    -- UnitIsPlayer raises outright: "Secret values are only allowed during
+    -- untainted execution for this argument". That fired on every single
+    -- mouseover, the pcall around this hook swallowed it, and the whole block
+    -- vanished -- tier, runs together, item level and all. The data table has
+    -- the GUID already, so the token was never needed.
+    local guid = data and ns.SafeGUID(data.guid)
+
+    -- Older shapes reach here through OnTooltipSetUnit, which carries no data.
+    -- The token is still the only route there, so test it for secrecy first --
+    -- before it is passed to anything, which is the whole lesson above.
+    if not guid then
+        local _, unit = tip:GetUnit()
+        if unit ~= nil and not ns.IsSecret(unit) and UnitIsPlayer(unit) then
+            guid = ns.SafeGUID(UnitGUID(unit))
+        end
+    end
     if not guid then return end
+
+    -- UnitIsPlayer used to be what kept creature tooltips out. The GUID says the
+    -- same thing without a unit token, and says it about the right unit.
+    if type(guid) ~= "string" or not guid:find("^Player%-") then return end
     Tooltip.Decorate(tip, guid)
 end
 
@@ -122,8 +137,8 @@ end
 
 ns.OnInit(function()
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
-        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tip)
-            local ok, err = pcall(onUnitTooltip, tip)
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tip, data)
+            local ok, err = pcall(onUnitTooltip, tip, data)
             if not ok then noteTooltipError(err) end
         end)
     elseif GameTooltip and GameTooltip.HookScript then
