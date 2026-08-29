@@ -140,58 +140,83 @@ end
 -- they separate "the capture never ran" from "it ran and nothing matched", which
 -- look identical from the outside and want opposite fixes. Not persisted; they
 -- answer a question about the session you are in. `/pugdebug defstats`.
-Defensives.stats = { updates = 0, withAdded = 0, examined = 0, matched = 0, secretIds = 0 }
+Defensives.stats = { updates = 0, examined = 0, matched = 0, secretIds = 0 }
 
--- The event's own payload is the cheap path and the accurate one. `addedAuras`
--- is exactly the set that just landed, so there is nothing to diff and no risk of
--- counting an aura twice because something else about the unit changed.
+-- What is currently up, per unit: [unit][spellID] = true, defensives only.
+local active = {}
+
+-- Read the defensives on a unit right now.
 --
--- A full update carries no addedAuras and means "re-read everything", which
--- happens on zoning and on joining. Those are not new applications, so nothing is
--- counted for them -- otherwise walking into a dungeon would credit everybody
--- with whatever they happened to be wearing.
-local function onAura(unit, updateInfo)
-    if not unitIsGroup(unit) then return end
-    if type(updateInfo) ~= "table" then return end
-    Defensives.stats.updates = Defensives.stats.updates + 1
-
-    -- `isFullUpdate` is deliberately never read.
-    --
-    -- It comes back a *secret boolean*, and a secret cannot be tested for truth
-    -- any more than it can be compared -- `if updateInfo.isFullUpdate then`
-    -- raises "attempt to perform boolean test on a secret boolean value". Same
-    -- trap as comparing a secret string to "": the danger is touching the value
-    -- at all, not the particular operator.
-    --
-    -- No matter: a full update carries no addedAuras, so the absence of that
-    -- list is the same signal, arrived at without asking a forbidden question.
-    local added = updateInfo.addedAuras
-    if ns.IsSecret(added) or type(added) ~= "table" then return end
-    Defensives.stats.withAdded = Defensives.stats.withAdded + 1
-
-    for _, aura in ipairs(added) do
-        if type(aura) == "table" then
-            local id = aura.spellId
-            if id ~= nil and ns.IsSecret(id) then
-                Defensives.stats.secretIds = Defensives.stats.secretIds + 1
-            elseif id ~= nil then
-                Defensives.stats.examined = Defensives.stats.examined + 1
-                if DEFENSIVE_AURAS[id] then
-                    Defensives.stats.matched = Defensives.stats.matched + 1
-                end
-                credit(unit, id)
-            end
+-- Scanned rather than taken from the event's addedAuras, which looked like the
+-- exact and cheap path and is neither: measured over one dungeon, 24 of 3867
+-- aura updates carried an addedAuras list at all. The client sends a groupmate's
+-- aura changes as full updates almost every time, so a capture built on that
+-- field sees under one per cent of what happens.
+--
+-- `isFullUpdate` is still never read: it comes back a secret boolean, and a
+-- secret cannot be tested for truth any more than it can be compared. Diffing
+-- makes the question moot -- a full update and an incremental one produce the
+-- same answer, because the answer comes from the unit rather than the payload.
+local function currentDefensives(unit, out)
+    wipe(out)
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return out end
+    for i = 1, 60 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, "HELPFUL")
+        if not ok or type(aura) ~= "table" then break end
+        local id = aura.spellId
+        if id ~= nil and ns.IsSecret(id) then
+            Defensives.stats.secretIds = Defensives.stats.secretIds + 1
+        elseif id ~= nil then
+            Defensives.stats.examined = Defensives.stats.examined + 1
+            if DEFENSIVE_AURAS[id] then out[id] = true end
         end
     end
+    return out
+end
+
+local scratch = {}
+
+local function onAura(unit)
+    if not unitIsGroup(unit) then return end
+    Defensives.stats.updates = Defensives.stats.updates + 1
+
+    local now = currentDefensives(unit, scratch)
+    local was = active[unit]
+    if not was then was = {}; active[unit] = was end
+
+    -- Count the transitions into "up". Re-reading the same aura on the next
+    -- update is not a second use of it, and that is the whole reason the previous
+    -- set is kept.
+    for id in pairs(now) do
+        if not was[id] then
+            Defensives.stats.matched = Defensives.stats.matched + 1
+            credit(unit, id)
+        end
+    end
+
+    wipe(was)
+    for id in pairs(now) do was[id] = true end
+end
+
+-- A unit token is a slot, not a person: party2 is somebody else after a leave, so
+-- their auras must not read as still up. Cleared on roster changes and when a
+-- record closes.
+function Defensives.Reset()
+    wipe(active)
 end
 
 ns.OnInit(function()
+    -- party2 is a different person after somebody leaves; their defensives are
+    -- not still up just because the token is still there.
+    ns.RegisterEvent("GROUP_ROSTER_UPDATE", Defensives.Reset)
+    ns.RegisterEvent("PLAYER_ENTERING_WORLD", Defensives.Reset)
+
     ns.RegisterEvent("UNIT_AURA", function(unit, updateInfo)
         -- Only while something is being recorded. Outside a run this fires
         -- constantly for no purpose, and the guard is one table lookup.
         local run = ns.RunTracker and ns.RunTracker.Active()
         local fight = ns.FightTracker and ns.FightTracker.Current and ns.FightTracker.Current()
         if not run and not fight then return end
-        onAura(unit, updateInfo)
+        onAura(unit)
     end)
 end)

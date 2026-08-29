@@ -316,12 +316,12 @@ SlashCmdList.PUGDEBUG = function(msg)
             Debug.Print("Capture/Defensives is not loaded.")
         else
             Debug.Print(string.format(
-                "aura updates %d, of which %d carried addedAuras; %d aura ids "
-                .. "examined, %d secret, %d matched the defensive list.",
-                st.updates, st.withAdded, st.examined, st.secretIds, st.matched))
-            if st.updates > 0 and st.withAdded == 0 then
-                Debug.Print("|cffd9a441addedAuras never arrived -- the payload "
-                    .. "shape is the problem, not the spell list.|r")
+                "aura updates %d; %d aura ids read, %d secret, %d defensive "
+                .. "applications counted.",
+                st.updates, st.examined, st.secretIds, st.matched))
+            if st.updates > 0 and st.examined == 0 then
+                Debug.Print("|cffd9a441no aura ids readable at all -- the "
+                    .. "capture cannot see auras, not a spell list problem.|r")
             elseif st.examined > 0 and st.matched == 0 then
                 Debug.Print("|cffd9a441auras seen but none in the list -- the "
                     .. "spell list is the problem, not the capture.|r")
