@@ -372,6 +372,23 @@ SlashCmdList.PUGDEBUG = function(msg)
                         ns.Print("  " .. line)
                     end
                 end
+
+                -- The same scan again from a C_Timer callback, which is where
+                -- the capture now does its reading. A slash command proved a
+                -- non-dispatch context is allowed to read auras; it did not
+                -- prove a timer is one, and that is the assumption the whole
+                -- fix rests on. Cheaper to answer here than in a dungeon.
+                C_Timer.After(0.3, function()
+                    Debug.Print("same scan from a timer (where the capture reads):")
+                    for _, line in ipairs(ns.Defensives.Probe("player")) do
+                        ns.Print("  " .. line)
+                    end
+                    if UnitExists("party1") then
+                        for _, line in ipairs(ns.Defensives.Probe("party1")) do
+                            ns.Print("  party1 " .. line)
+                        end
+                    end
+                end)
             end
 
             -- What it saw on groupmates and did not recognise, commonest
