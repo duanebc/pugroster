@@ -46,30 +46,6 @@ local COLS = {
     { key = "hps",     label = "hps",     x = 656, width = 54,  align = "RIGHT" },
 }
 
-local FACTION_ICON = {
-    Alliance = "|TInterface\\PVPFrame\\PVP-Currency-Alliance:14:14|t",
-    Horde    = "|TInterface\\PVPFrame\\PVP-Currency-Horde:14:14|t",
-}
-
--- The spec's own icon, from the spec id captured on inspect. Falls back to
--- nothing rather than a placeholder: an empty slot reads as "not known", a
--- question-mark icon reads as a spec.
-local function specIcon(obs)
-    local id = obs.spec
-    if not id or not GetSpecializationInfoByID then return "" end
-    local ok, _, _, _, icon = pcall(GetSpecializationInfoByID, id)
-    if not ok or not icon then return "" end
-    return "|T" .. tostring(icon) .. ":14:14|t"
-end
-
--- Icons first, then the name: the eye scans the left edge for "which of them is
--- this", and a fixed-width pair of glyphs keeps the names aligned under it.
-local function nameCell(obs)
-    return (FACTION_ICON[obs.faction] or "")
-        .. specIcon(obs)
-        .. " " .. ns.NameWithRealm(obs.name, ns.ClassColor(obs.classFile))
-end
-
 local frame
 
 local function ensureFrame()
@@ -178,7 +154,7 @@ function RunSummary.Show(record)
 
     for i, obs in ipairs(list) do
         local row = rowAt(i)
-        row.cells.name:SetText(nameCell(obs))
+        row.cells.name:SetText(ns.GroupNameCell(obs))
         row.cells.role:SetText(ns.RoleLabel(obs.role))
         row.cells.ilvl:SetText(obs.ilvl and tostring(obs.ilvl) or "-")
         row.cells.deaths:SetText(tostring(obs.deaths or 0))

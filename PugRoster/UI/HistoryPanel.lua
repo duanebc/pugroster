@@ -329,7 +329,7 @@ local function build(page)
         return row
     end, function(row, obs)
         row.obs = obs
-        row.cells.name:SetText(ns.NameWithRealm(obs.name, ns.ClassColor(obs.classFile)))
+        row.cells.name:SetText(ns.GroupNameCell(obs))
         row.cells.role:SetText(ns.RoleLabel(obs.role))
         row.cells.deaths:SetText(tostring(obs.deaths or 0))
         row.cells.kicks:SetText(tostring(obs.interrupts or 0))

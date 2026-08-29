@@ -378,6 +378,36 @@ end
 -- The client calls it DAMAGER. Nobody else does.
 local ROLE_LABEL = { TANK = "tank", HEALER = "healer", DAMAGER = "DPS" }
 
+-- Faction and spec as inline icons, shared by every table that shows a group.
+--
+-- Both are recognised faster than they are read, and a spec name is the widest
+-- text on a row for something a 14px glyph carries perfectly. Defined here rather
+-- than in one panel so the run summary and the history table cannot drift apart.
+local FACTION_ICON = {
+    Alliance = "|TInterface\\PVPFrame\\PVP-Currency-Alliance:14:14|t",
+    Horde    = "|TInterface\\PVPFrame\\PVP-Currency-Horde:14:14|t",
+}
+
+function ns.FactionIcon(faction)
+    return FACTION_ICON[faction] or ""
+end
+
+-- Nothing rather than a placeholder when the spec is unknown: an empty slot reads
+-- as "not known", a question mark reads as a spec.
+function ns.SpecIcon(specID)
+    if not specID or not GetSpecializationInfoByID then return "" end
+    local ok, _, _, _, icon = pcall(GetSpecializationInfoByID, specID)
+    if not ok or not icon then return "" end
+    return "|T" .. tostring(icon) .. ":14:14|t"
+end
+
+-- The name as a group table shows it: what they are, then who they are.
+function ns.GroupNameCell(obs)
+    if not obs then return "?" end
+    return ns.FactionIcon(obs.faction) .. ns.SpecIcon(obs.spec)
+        .. " " .. ns.NameWithRealm(obs.name, ns.ClassColor(obs.classFile))
+end
+
 function ns.RoleLabel(role)
     if not role or role == "" or role == "NONE" then return "-" end
     return ROLE_LABEL[role] or role:lower()

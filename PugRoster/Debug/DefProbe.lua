@@ -27,6 +27,8 @@
 
 local ADDON, ns = ...
 
+local UI = ns.UI
+
 local DefProbe = {}
 ns.DefProbe = DefProbe
 
@@ -482,29 +484,43 @@ end
 -- having kept the chat frame open.
 -- `show` is somebody asking to read it, so it prints in full whatever the
 -- quiet default says.
+-- Into a window, not the chat frame. Three runs is already twenty lines, which
+-- is exactly the shape a small chat frame cannot show.
 function DefProbe.Show()
-    local was = DefProbe.verbose
-    DefProbe.verbose = true
     local runs = ns.db and ns.db.debugProbe
     if type(runs) ~= "table" or #runs == 0 then
         ns.Print("no probe runs stored yet -- |cffffff00/pugdebug defprobe|r records one")
-        DefProbe.verbose = was
         return
     end
-    ns.Print(string.format("|cff8f5fd6%d probe run%s|r", #runs, #runs == 1 and "" or "s"))
-    for i, r in ipairs(runs) do
-        line("%d. %s  group=%d  %ds", i, tostring(r.zone or "?"),
-            tonumber(r.groupSize) or 0, tonumber(r.seconds) or 0)
-        line("   cast: %d events, %d group, %d readable, %d secret",
-            r.cast.events, r.cast.group, r.cast.readable, r.cast.secret)
-        line("   aura: %d events, %d group, %d readable, %d secret",
-            r.aura.events, r.aura.group, r.aura.readable, r.aura.secret)
-        line("   %s", tostring(r.verdict))
-        if r.secretLookup then
-            line("   secret-id lookup: %s", tostring(r.secretLookup.result))
-        end
+
+    local out = {}
+    local function add(fmt, ...)
+        out[#out + 1] = select("#", ...) > 0 and string.format(fmt, ...) or fmt
     end
-    DefProbe.verbose = was
+
+    for i, r in ipairs(runs) do
+        add("|cff8f5fd6%d. %s|r   group %d   %ds", i, tostring(r.zone or "?"),
+            tonumber(r.groupSize) or 0, tonumber(r.elapsed or r.seconds) or 0)
+        for _, k in ipairs({ "cast", "aura" }) do
+            local b = r[k]
+            if b then
+                add("     %-5s events %-6d readable %-5d secret %d",
+                    k, b.events or 0, b.readable or 0, b.secret or 0)
+                for _, u in ipairs(b.units or {}) do
+                    add("           %-10s readable %-4d secret %d",
+                        tostring(u.unit), u.readable or 0, u.secret or 0)
+                end
+            end
+        end
+        if r.secretLookup then
+            add("     secret-id lookup: %s", tostring(r.secretLookup.result))
+        end
+        add("     |cffd9a441%s|r", tostring(r.verdict))
+        add(" ")
+    end
+
+    UI.TextWindow(string.format("Defensive probe -- %d run%s",
+        #runs, #runs == 1 and "" or "s"), out)
 end
 
 function DefProbe.Clear()

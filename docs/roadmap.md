@@ -37,7 +37,27 @@ While in there: the live description predates the last three releases.
 `docs/curseforge-description.md` is ready to paste, and `docs/listing-todo.md`
 lists the rest (source and issues links, four more screenshots).
 
-## 4. The three unused server meters
+## 4. Defensives, via auras -- the route is open after all
+
+**Answered 2026-08-29 by the third probe run**, and the answer changed the plan:
+
+- `secret-id lookup: resolves, but the name is secret too`. A secret spell id can
+  be handed back to the API, and what comes back is secret as well. **The cast
+  route is closed for good** -- no spell list, by id or by name.
+- `groupmate auras ARE readable` -- 184 readable, **0 secret**, across 2179 group
+  aura events. `UNIT_AURA` sees other players' buffs when `UNIT_SPELLCAST_SUCCEEDED`
+  will not tell you what they cast.
+
+So defensives are countable: watch `UNIT_AURA` on `party1-4`, match aura spell ids
+against a curated defensive list, count each application. It measures a defensive
+being *active* rather than a button being pressed, which for a cooldown is the
+same event and for Ironfur is arguably the better one.
+
+Still true from the earlier analysis: Ironfur at 102 casts beside Barkskin at 3
+means one number cannot hold rotational mitigation and emergency cooldowns
+together. Majors only was the call.
+
+## 5. The three unused server meters
 
 `Enum.DamageMeterType` exposes eleven meters and the addon consumes five. The
 defensive-cooldown probe found `Absorbs`, `DamageTaken` and
@@ -54,7 +74,7 @@ button count would.
 They drop into the `METERS` table in `Capture/DetailsBridge.lua` beside the five
 already there. See `docs/defensive-probe.html` for the evidence.
 
-## 5. Smaller, still worth doing
+## 6. Smaller, still worth doing
 
 - **Audit for the secret-comparison pattern.** `x == ""` evaluated before
   `ns.IsSecret(x)` raises rather than returning false, and it silently emptied

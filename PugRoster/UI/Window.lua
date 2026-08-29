@@ -463,6 +463,56 @@ function UI.SortHeader(parent, columns, state, onChange)
     return header
 end
 
+--------------------------------------------------------------------------------
+-- A plain window of text lines
+--
+-- For output that is too long for a chat frame and not a table: a report you want
+-- to read, scroll and close. Monospaced-ish alignment is the caller's job -- this
+-- only puts the lines somewhere readable.
+--------------------------------------------------------------------------------
+
+local textWindow
+
+function UI.TextWindow(title, lines)
+    if not textWindow then
+        textWindow = CreateFrame("Frame", "PugRosterTextWindow", UIParent)
+        textWindow:SetSize(620, 420)
+        textWindow:SetPoint("CENTER")
+        textWindow:SetFrameStrata("DIALOG")
+        textWindow:SetClampedToScreen(true)
+        UI.Backdrop(textWindow, { 0.08, 0.08, 0.11, 0.97 })
+        textWindow:EnableMouse(true)
+        textWindow:SetMovable(true)
+        textWindow:RegisterForDrag("LeftButton")
+        textWindow:SetScript("OnDragStart", textWindow.StartMoving)
+        textWindow:SetScript("OnDragStop", textWindow.StopMovingOrSizing)
+
+        textWindow.title = UI.Label(textWindow, "", 13, { 0.9, 0.88, 0.95 })
+        textWindow.title:SetPoint("TOPLEFT", 10, -9)
+
+        local close = UI.Button(textWindow, "X", 22, function() textWindow:Hide() end)
+        close:SetPoint("TOPRIGHT", -6, -6)
+        close:SetHeight(20)
+
+        textWindow.list = UI.ScrollList(textWindow, 14, function(parent)
+            local row = CreateFrame("Frame", nil, parent)
+            row.text = UI.Label(row, "", 11, { 0.78, 0.76, 0.84 })
+            row.text:SetPoint("LEFT", 4, 0)
+            row.text:SetPoint("RIGHT", -4, 0)
+            row.text:SetJustifyH("LEFT")
+            row.text:SetWordWrap(false)
+            return row
+        end, function(row, item) row.text:SetText(tostring(item)) end)
+        textWindow.list:SetPoint("TOPLEFT", 6, -32)
+        textWindow.list:SetPoint("BOTTOMRIGHT", -6, 8)
+    end
+
+    textWindow.title:SetText(title or "")
+    textWindow.list:SetData(lines or {})
+    textWindow:Show()
+    return textWindow
+end
+
 function UI.MakeRow(parent)
     local row = CreateFrame("Button", nil, parent)
     row.stripe = row:CreateTexture(nil, "BACKGROUND")

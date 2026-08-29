@@ -193,12 +193,6 @@ local function closeSegment()
             if ok and applied then
                 accumulate(record, segment)
                 if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
-                -- An ordinary dungeon is a fight, not a key, so it reaches the
-                -- summary window through here rather than through RunTracker --
-                -- a timewalking run has numbers worth reading too.
-                if ns.RunSummary and record.content == "dungeon" then
-                    ns.RunSummary.Show(record)
-                end
                 return
             end
             if tries < 4 then
@@ -256,5 +250,19 @@ ns.OnInit(function()
         if InCombatLockdown() then openSegment(nil) end
     end)
     -- Leaving an instance ends the visit; the next fight starts a new record.
-    ns.RegisterEvent("PLAYER_ENTERING_WORLD", function() current = nil end)
+    ns.RegisterEvent("PLAYER_ENTERING_WORLD", function()
+        local finished = current
+        current = nil
+
+        -- The visit is the unit worth summarising, not the pull. Hooking segment
+        -- enrichment put a window on screen at every boss, showing the visit's
+        -- totals from before that pull had been added to them -- which is why it
+        -- appeared mid-encounter and appeared empty.
+        --
+        -- Delayed, because the last segment is still being read: enrichment waits
+        -- for combat to drop and then retries, so leaving immediately outruns it.
+        if finished and finished.content == "dungeon" and ns.RunSummary then
+            C_Timer.After(6, function() ns.RunSummary.Show(finished) end)
+        end
+    end)
 end)
