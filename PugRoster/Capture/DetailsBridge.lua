@@ -304,6 +304,10 @@ function Bridge.Enrich(run, preferType)
                 if rec.interrupts > 0 then obs.interrupts = rec.interrupts end
                 if rec.dispels    > 0 then obs.dispels    = rec.dispels end
                 if rec.deaths     > 0 then obs.deaths     = rec.deaths end
+                -- Server meter only. Details has no equivalent, so the fallback
+                -- block below deliberately does not touch this -- and reading a
+                -- field it never sets would compare nil with a number.
+                if (rec.avoidable or 0) > 0 then obs.avoidable = rec.avoidable end
                 obs.statSource = "server"
                 matched = matched + 1
             end
