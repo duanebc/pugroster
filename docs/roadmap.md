@@ -37,7 +37,15 @@ While in there: the live description predates the last three releases.
 `docs/curseforge-description.md` is ready to paste, and `docs/listing-todo.md`
 lists the rest (source and issues links, four more screenshots).
 
-## 4. Defensives, via auras -- the route is open after all
+## 4. Defensives, via auras -- open outside keys, closed inside them
+
+> **Superseded 2026-08-29.** The conclusion below ("defensives are countable")
+> holds in normal, heroic and timewalking dungeons and is **false in Mythic+**:
+> the client refuses the aura read outright while the challenge-mode restriction
+> holds. Built, measured, and closed -- see
+> [defensives-in-mythic-plus.md](defensives-in-mythic-plus.md) for the evidence
+> and the four hypotheses it took to get there. The `def` column was replaced by
+> `avoid` (avoidable damage taken), which is section 5 below.
 
 **Answered 2026-08-29 by the third probe run**, and the answer changed the plan:
 
@@ -58,6 +66,12 @@ means one number cannot hold rotational mitigation and emergency cooldowns
 together. Majors only was the call.
 
 ## 5. The three unused server meters
+
+> **`AvoidableDamageTaken` shipped 2026-08-29**, for exactly the reason this
+> section predicted: it is the realistic version of the defensives feature. It
+> replaced the `def` column in both the run summary and the history group table.
+> `Absorbs` and `DamageTaken` remain unused.
+
 
 `Enum.DamageMeterType` exposes eleven meters and the addon consumes five. The
 defensive-cooldown probe found `Absorbs`, `DamageTaken` and
