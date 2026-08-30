@@ -63,16 +63,22 @@ the problem with inviting off somebody else's score.
 ## A roster of people, not a list of names
 
 **Characters link under a person.** The rogue you met last week and the alt he
-brings tonight are the same player, and PugRoster knows it. Battle.net friends
-link themselves wherever the friends list exposes the mapping; anyone else can be
-linked by hand in two clicks.
+brings tonight are the same player, and PugRoster knows it. Two characters are
+linked automatically only when the client gives them the same BattleTag, which is
+stable and account-unique; anyone else can be linked by hand in two clicks. A
+merge is refused outright when two known BattleTags disagree, because that is the
+one thing which can prove a grouping wrong.
 
 **And unlinked when it gets it wrong.** **Unlink main** detaches a single
-character. If a person has collected characters that are not theirs at all,
-`/pr unmerge` splits every person back apart by Battle.net account -- that ID
-comes from the server, so it is the one grouping that cannot be mistaken. It
-discards hand-made links along with the bad ones, because after the fact there is
-no way to tell them apart.
+character. `/pr ungroup` dissolves every grouping nothing vouches for, keeping
+those backed by a shared BattleTag and those you made yourself -- persons record
+which. It shows you what it would do and changes nothing until you add `confirm`.
+Nothing is lost by ungrouping: runs, item level and tier live on the character,
+so only the claim that two characters are one person goes.
+
+The history header names the characters a run count is pooled from and why they
+are grouped, because a count spanning five characters is misleading if you cannot
+see that it does.
 
 **Your friends list is already in there.** Everyone on it is imported and tagged
 `existing_friend`, because the people you already know are precisely the ones
@@ -166,7 +172,20 @@ guessing at who said yes.
 - **A dismissible toast** when somebody you have rated joins your group.
 - **Run history** with dps and hps computed over *combat time* rather than wall
   clock, because the minutes spent walking between packs were not minutes anyone
-  was doing damage in.
+  was doing damage in. Every table sorts on any column.
+- **A summary window when a run is recorded**, with the group across a dozen
+  columns -- faction and spec icons, item level, deaths, kicks, dispels,
+  avoidable damage taken, damage and healing. Five players across a dozen columns
+  is a table, and a table read as scrolling chat text is not a table. Switchable
+  off in Options.
+- **`avoid` -- avoidable damage taken**, the server's own judgement of damage
+  somebody should not have taken. It is there instead of a count of defensive
+  cooldowns, which cannot be built on this client: reading a groupmate's auras is
+  refused inside a key, so that column would have read zero for everyone in
+  exactly the content it was meant for.
+- **Right-click anybody in a run** to see their history, message them, invite
+  them, add them, or open them in the roster -- without leaving the tab you are
+  looking at.
 
 ---
 
@@ -180,7 +199,7 @@ guessing at who said yes.
 | `/pr options` | settings, tags, data tools |
 | `/pr rate` | recompute tiers now |
 | `/pr note <name> <text>` | quick note without opening the UI |
-| `/pr unmerge` | split persons back apart by Battle.net account, when linking has gone wrong |
+| `/pr ungroup` | undo character groupings nothing vouches for -- shows what it would do until you add `confirm` |
 
 ---
 
@@ -194,10 +213,11 @@ its own tiers, and it deliberately does not duplicate the Raider.IO tooltip.
 
 **Does it work on Midnight?**
 Yes, with one honest caveat. Interface 120000+ closed the combat log to addons.
-Damage and healing come from Blizzard's own server-side meter, with Details as a
-fallback -- but deaths, interrupts, dispels and crowd control are not available
-to any addon there. Outcome-based rating is completely unaffected, and the
-options panel tells you which source is in effect on your client rather than
+Damage, healing, deaths, interrupts, dispels and avoidable damage taken all come
+from Blizzard's own server-side meter instead, with Details as a fallback, so a
+key records the same numbers it always did. Crowd control has no meter and is not
+available to any addon there. Outcome-based rating is completely unaffected, and
+the options panel tells you which source is in effect on your client rather than
 leaving you to guess. If Blizzard reopens the combat log, the capture is still in
 place and starts working again.
 
