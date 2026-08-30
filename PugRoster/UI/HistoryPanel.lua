@@ -97,7 +97,7 @@ function panel.ActionsFor(obs)
             }
         end
         entries[#entries + 1] = { text = "Whisper", func = function()
-            if ChatFrame_SendTell then ChatFrame_SendTell(name) end
+            ns.OpenWhisper(name)
         end }
     end
 

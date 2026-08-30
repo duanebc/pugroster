@@ -371,13 +371,7 @@ local function build(page)
         -- notification carries a player link for the same reason; this is the
         -- same affordance where you are already looking.
         row:SetScript("OnClick", function(self)
-            local name = self.rec and self.rec.name
-            if not name or ns.IsSecret(name) then return end
-            if ChatFrame_SendTell then
-                ChatFrame_SendTell(name)
-            else
-                ns.Print("whisper", ns.PlayerLink(name))
-            end
+            ns.OpenWhisper(self.rec and self.rec.name)
         end)
         return row
     end, function(row, rec)

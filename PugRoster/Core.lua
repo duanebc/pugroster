@@ -355,6 +355,52 @@ end
 -- colour early and the rest of the line loses it.
 -- A clickable player name for chat output.
 --
+-- Point the chat box at a character, and at nothing else.
+--
+-- Every whisper in the addon goes through here, because
+-- `if ChatFrame_SendTell then ChatFrame_SendTell(name) end` -- what the call
+-- sites used to do -- has two failure modes and both end the same way. If that
+-- function is absent the guard silently does nothing at all; and even when it
+-- runs it leaves `bnetIDAccount` on the edit box, so a box last used for a
+-- Battle.net whisper stays pointed at that account. Either way you press
+-- Whisper on somebody, nothing appears to change, and the next thing you type
+-- goes to the last Battle.net friend you spoke to.
+--
+-- So the target is set explicitly and the Battle.net one cleared, rather than
+-- assumed. Everything is feature-detected: this is Blizzard's edit box and the
+-- names around it have moved before.
+function ns.OpenWhisper(name)
+    if name == nil or ns.IsSecret(name) or name == "" then return false end
+
+    local box = (ChatEdit_ChooseBoxForSend and ChatEdit_ChooseBoxForSend())
+        or (ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow())
+        or (DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.editBox)
+
+    if box and box.SetAttribute then
+        -- The clear is the fix. WHISPER and BN_WHISPER keep their targets in
+        -- different attributes, so setting one without clearing the other
+        -- leaves the box holding both and Blizzard picking the wrong one.
+        box:SetAttribute("bnetIDAccount", nil)
+        box:SetAttribute("chatType", "WHISPER")
+        box:SetAttribute("tellTarget", name)
+        if ChatEdit_UpdateHeader then pcall(ChatEdit_UpdateHeader, box) end
+        if ChatEdit_ActivateChat then pcall(ChatEdit_ActivateChat, box)
+        elseif box.Show then box:Show() end
+        if box.SetFocus then box:SetFocus() end
+        return true
+    end
+
+    if ChatFrame_SendTell then
+        ChatFrame_SendTell(name)
+        return true
+    end
+
+    -- Nothing to open. Say so with a link, which is still one click to a
+    -- whisper, rather than failing silently the way the old guard did.
+    ns.Print("whisper", ns.PlayerLink(name))
+    return false
+end
+
 -- The client turns |Hplayer:Name-Realm|h into the same link the chat frame makes
 -- for anyone speaking, so clicking it opens a whisper -- which is the point: a
 -- notification that you messaged someone is most useful when it is also the way
