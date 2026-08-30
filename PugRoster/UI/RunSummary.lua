@@ -164,9 +164,13 @@ function RunSummary.Show(record)
         row.cells.deaths:SetText(tostring(obs.deaths or 0))
         row.cells.kicks:SetText(tostring(obs.interrupts or 0))
         row.cells.disp:SetText(tostring(obs.dispels or 0))
-        -- nil means the run predates defensive capture, or the client will not
-        -- give it to us; 0 would claim nobody pressed anything.
-        row.cells.def:SetText(obs.defensives and tostring(obs.defensives) or "-")
+        -- nil means the run predates defensive capture; 0 means tracked and
+        -- nobody pressed anything. Those are different claims, and so is the
+        -- third case -- the client refused to let us look, which is what a key
+        -- does -- where any number at all would be a lie.
+        row.cells.def:SetText(
+            (not record.defensivesBlocked) and obs.defensives
+            and tostring(obs.defensives) or "-")
         row.cells.dmg:SetText(ns.FormatCount(obs.damage))
         row.cells.dps:SetText(ns.FormatCount(ns.PerSecond(obs.damage, record)))
         row.cells.heal:SetText(ns.FormatCount(obs.healing))

@@ -357,9 +357,12 @@ local function build(page)
         row.cells.deaths:SetText(tostring(obs.deaths or 0))
         row.cells.kicks:SetText(tostring(obs.interrupts or 0))
         row.cells.disp:SetText(tostring(obs.dispels or 0))
-        -- nil is "this run predates defensive capture"; 0 is
-        -- "tracked, none used". They are different claims.
-        row.cells.def:SetText(obs.defensives and tostring(obs.defensives) or "-")
+        -- nil is "this run predates defensive capture"; 0 is "tracked, none
+        -- used"; and a blocked record is "never allowed to look", which is what
+        -- a key does. Three different claims, and only one of them is a number.
+        row.cells.def:SetText(
+            (not (shownRecord and shownRecord.defensivesBlocked)) and obs.defensives
+            and tostring(obs.defensives) or "-")
         row.cells.dmg:SetText(short(obs.damage))
         row.cells.dps:SetText(short(ns.PerSecond(obs.damage, shownRecord)))
         row.cells.heal:SetText(short(obs.healing))

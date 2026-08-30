@@ -189,6 +189,7 @@ Defensives.stats = {
     matched = 0,      -- transitions into a known defensive
     noObs = 0,        -- matched, but no observation to credit it to
     nilIds = 0,       -- aura tables that carried no spellId at all
+    refused = 0,      -- reads the client refused outright
     sessions = 0,
     scanStop = nil,   -- why the first aura scan stopped, verbatim
 }
@@ -259,6 +260,15 @@ end
 -- nothing to compare against and start clean, with no wiping required.
 local active = {}
 
+-- How long to wait before trying again after the client refuses a read.
+local REFUSAL_BACKOFF = 5
+local refusedUntil
+
+-- Set the moment a read is refused, so the UI can tell "nobody used one" from
+-- "we were never allowed to look". A zero in the def column is a claim, and it
+-- should only be made when it was actually measured.
+Defensives.blocked = false
+
 -- Read the defensives on a unit right now.
 --
 -- Scanned rather than taken from the event's addedAuras, which looked like the
@@ -273,6 +283,11 @@ local active = {}
 -- same answer, because the answer comes from the unit rather than the payload.
 local function currentDefensives(unit, out)
     wipe(out)
+    -- Do not hammer a door that is bolted. A refused read stays refused for as
+    -- long as the restriction holds, and retrying every quarter second cost
+    -- sixteen thousand failed reads in a single key for no information at all.
+    if refusedUntil and GetTime() < refusedUntil then return out end
+
     if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
         Defensives.stats.scanStop = Defensives.stats.scanStop
             or "C_UnitAuras.GetAuraDataByIndex is not available"
@@ -292,6 +307,18 @@ local function currentDefensives(unit, out)
             -- failure behind it. The one exception is slot 1 -- stopping there
             -- means nothing was readable at all, which is a finding.
             local st = Defensives.stats
+            if not ok then
+                -- Which restrictions were up when the client refused. The read
+                -- succeeds in a normal dungeon and is refused in a key, so the
+                -- restriction is the thing worth naming -- and naming it is
+                -- cheaper than another dungeon spent guessing.
+                local locks = ns.DetailsBridge and ns.DetailsBridge.ActiveLocks
+                    and table.concat(ns.DetailsBridge.ActiveLocks(), "+") or "?"
+                st.refused = (st.refused or 0) + 1
+                st.refusedLocks = locks ~= "" and locks or "none"
+                refusedUntil = GetTime() + REFUSAL_BACKOFF
+                Defensives.blocked = true
+            end
             if not st.scanStop and (not ok or i == 1) then
                 st.scanStop = ("slot %d: %s"):format(i,
                     (not ok) and ("error: " .. tostring(aura))
@@ -409,6 +436,13 @@ local function scanDirty()
         dirty[unit] = nil
         if run or fight then onAura(unit) end
     end
+
+    -- Remember on the record itself that we were refused, so the column can say
+    -- "not measured" long after the session that could not measure it.
+    if Defensives.blocked then
+        local record = run or fight
+        if record then record.defensivesBlocked = true end
+    end
 end
 
 -- Only between visits. Keyed by GUID, the table needs no clearing when the roster
@@ -416,6 +450,8 @@ end
 -- counted a second time.
 function Defensives.Reset()
     wipe(active)
+    refusedUntil = nil
+    Defensives.blocked = false
     -- Units marked during the visit that just ended have nowhere to land now.
     wipe(dirty)
 end
@@ -432,6 +468,7 @@ function Defensives.Persist()
         updates = st.updates, examined = st.examined,
         secretIds = st.secretIds, matched = st.matched, noObs = st.noObs,
         nilIds = st.nilIds, scanStop = st.scanStop,
+        refused = st.refused, refusedLocks = st.refusedLocks,
         sessions = st.sessions,
         at = ns.Now(),
     }
@@ -451,7 +488,8 @@ ns.OnInit(function()
     local stored = ns.db and ns.db.debugDefStats
     if stored then
         for _, k in ipairs({ "raw", "noRecord", "notGroup", "updates", "examined",
-                             "secretIds", "matched", "noObs", "nilIds", "sessions" }) do
+                             "secretIds", "matched", "noObs", "nilIds", "refused",
+                             "sessions" }) do
             Defensives.stats[k] = tonumber(stored[k]) or 0
         end
     end
