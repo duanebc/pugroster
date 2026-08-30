@@ -308,14 +308,34 @@ end
 
 -- Merge the person behind `guidB` into the person behind `guidA`. Tags and
 -- notes union; a tier override on either side survives (A wins on conflict).
-function Roster.LinkCharacters(guidA, guidB)
+function Roster.LinkCharacters(guidA, guidB, linkedBy)
     local a, b = Roster.GetCharacter(guidA), Roster.GetCharacter(guidB)
     if not a or not b then return false, "unknown character" end
     if a.personId == b.personId then return true end
 
+    -- The one thing that can prove a merge wrong, checked before it happens.
+    -- A BattleTag is stable and account-unique, so two of them disagreeing means
+    -- these are two people however they came to be here.
+    local tagA, tagB = Roster.BattleTagFor(Roster.GetPerson(a.personId)),
+                       Roster.BattleTagFor(Roster.GetPerson(b.personId))
+    if tagA and tagB and not ns.IsSecret(tagA) and not ns.IsSecret(tagB)
+        and tagA ~= tagB then
+        return false, "different Battle.net accounts"
+    end
+
     local keep = Roster.GetPerson(a.personId)
     local merge = Roster.GetPerson(b.personId)
     if not keep or not merge then return false, "unknown person" end
+
+    -- How this grouping was arrived at, so a later repair can tell a link you
+    -- made from one the addon guessed. There was no such marker, which is the
+    -- only reason the previous repair had to throw manual links away.
+    -- "manual" is the stronger claim and survives being merged into.
+    if linkedBy == "manual" or merge.linkedBy == "manual" then
+        keep.linkedBy = "manual"
+    else
+        keep.linkedBy = keep.linkedBy or linkedBy or merge.linkedBy
+    end
 
     for tag in pairs(merge.tags) do keep.tags[tag] = true end
     if (merge.note or "") ~= "" then
@@ -846,80 +866,124 @@ function Roster.OnlineIndex()
     return index
 end
 
--- Split persons that hold characters from more than one Battle.net account.
+-- Undo groupings that nothing vouches for.
 --
--- The link sync used to stamp an account onto any character whose name matched,
--- overwriting whatever was there, so one name collision chained two accounts
--- together and the next sync chained those to a third. It ends with most of the
--- roster inside a single person -- 158 characters across dozens of accounts in
--- the database that prompted this -- which quietly ruins everything downstream:
--- runs-together, tiers, the history filter, who a toast names.
+-- The old repair, RebuildPersonsFromAccounts, regrouped by bnetAccountID -- the
+-- very value now known to be unstable between sessions -- so running it would
+-- have entrenched the damage rather than undone it. This replaces it.
 --
--- The account ID is the authority, because it comes from the server rather than
--- from us. Characters that carry one are regrouped so that one account is one
--- person; characters with no account at all cannot be attributed to anybody and
--- are given a person each, which is what they would have had before any linking.
+-- A grouping is kept only when something stands behind it:
+--   * every character in it shares one BattleTag, which is stable and account
+--     unique; or
+--   * you made it yourself (linkedBy == "manual").
+-- Everything else is dissolved into one person per character.
 --
--- Manual links are lost. There is no way to tell one apart from a bad automatic
--- one after the fact, and leaving the merges in place is worse.
-function Roster.RebuildPersonsFromAccounts()
-    local split, freed = 0, 0
+-- Nothing is lost by dissolving. Runs, item level, tier and history live on the
+-- character; only the claim that two characters are one person goes, along with
+-- the numbers derived from it. Person-level note, tags and tier override follow
+-- the character with the most runs, because they have to go somewhere and that
+-- is the one you actually know.
+--
+-- `apply` false reports what it would do and changes nothing.
+function Roster.UngroupUnverified(apply)
+    local plan = { groups = 0, characters = 0, kept = 0, keptManual = 0, details = {} }
 
-    -- Which persons are actually mixed. A person whose characters all share one
-    -- account -- or carry none -- is left exactly as it is.
-    local suspect = {}
     for _, person in pairs(ns.db.persons) do
-        local accounts, without = {}, 0
-        local n = 0
-        for guid in pairs(person.characters or {}) do
-            local c = Roster.GetCharacter(guid)
-            local acct = c and c.bnetAccountID
-            if acct then
-                if not accounts[acct] then accounts[acct] = true; n = n + 1 end
+        local guids = {}
+        for guid in pairs(person.characters or {}) do guids[#guids + 1] = guid end
+        if #guids > 1 then
+            if person.linkedBy == "manual" then
+                plan.kept = plan.kept + 1
+                plan.keptManual = plan.keptManual + 1
             else
-                without = without + 1
+                -- One shared tag across every character is the only automatic
+                -- justification left. A group where some characters have a tag
+                -- and others have none is not justified: the untagged ones are
+                -- there on the strength of an account ID.
+                local tag, sameTag = nil, true
+                for _, guid in ipairs(guids) do
+                    local c = Roster.GetCharacter(guid)
+                    local t = c and c.battleTag
+                    if not t or ns.IsSecret(t) or t == "" then sameTag = false break end
+                    if tag and t ~= tag then sameTag = false break end
+                    tag = t
+                end
+                if sameTag and tag then
+                    plan.kept = plan.kept + 1
+                else
+                    plan.groups = plan.groups + 1
+                    plan.characters = plan.characters + #guids
+                    plan.details[#plan.details + 1] = {
+                        id = person.id, name = person.name, count = #guids,
+                    }
+                end
             end
         end
-        if n > 1 or (n >= 1 and without > 0) then suspect[person.id] = true end
     end
 
-    for personId in pairs(suspect) do
+    if not apply then return plan end
+
+    -- Collected first, then applied: AttachToPerson edits ns.db.persons, and
+    -- rearranging a table while iterating it is how you miss half of them.
+    local doomed = {}
+    for _, d in ipairs(plan.details) do doomed[#doomed + 1] = d.id end
+
+    for _, personId in ipairs(doomed) do
         local person = Roster.GetPerson(personId)
         if person then
-            split = split + 1
-            local byAccount = {}
-            for guid in pairs(person.characters) do
+            local guids = {}
+            for guid in pairs(person.characters) do guids[#guids + 1] = guid end
+
+            -- Whoever you have played with most inherits anything hand-set.
+            local heir, heirRuns = nil, -1
+            for _, guid in ipairs(guids) do
                 local c = Roster.GetCharacter(guid)
-                local acct = c and c.bnetAccountID
-                if acct then
-                    -- First character of each account keeps a person of its own;
-                    -- the rest of that account joins it.
-                    if byAccount[acct] then
-                        person.characters[guid] = nil
-                        Roster.AttachToPerson(guid, byAccount[acct])
-                    else
-                        person.characters[guid] = nil
-                        local p = Roster.AttachToPerson(guid)
-                        byAccount[acct] = p and p.id
+                local runs = (c and tonumber(c.runs)) or 0
+                if runs > heirRuns then heir, heirRuns = guid, runs end
+            end
+            local note, tags = person.note, person.tags
+            local tierOverride, lastMessaged = person.tierOverride, person.lastMessaged
+
+            for _, guid in ipairs(guids) do
+                person.characters[guid] = nil
+                local fresh = Roster.AttachToPerson(guid)
+                if fresh and guid == heir then
+                    fresh.note = note
+                    fresh.tierOverride = tierOverride
+                    fresh.lastMessaged = lastMessaged
+                    if tags then
+                        for tag in pairs(tags) do fresh.tags[tag] = true end
                     end
-                else
-                    person.characters[guid] = nil
-                    Roster.AttachToPerson(guid)
                 end
-                freed = freed + 1
             end
             if not next(person.characters) then ns.db.persons[person.id] = nil end
         end
     end
 
-    if freed > 0 and ns.Rating and ns.Rating.RecomputeAll then ns.Rating.RecomputeAll() end
-    return split, freed
+    if plan.characters > 0 and ns.Rating and ns.Rating.RecomputeAll then
+        ns.Rating.RecomputeAll()
+    end
+    return plan
 end
 
 -- Fold whatever the friends list currently exposes back into our characters:
--- records the BNet account ID, and links two characters that share one.
+-- records the account ID and the BattleTag, and links characters that share a
+-- *BattleTag*.
+--
+-- It used to link on bnetAccountID, which is not stable between sessions. The
+-- proof is in the database it produced: the same character name sitting under
+-- two adjacent account IDs -- Drakowolf under 690 and 364, Chinahunter under 254
+-- and 253, Averelle under 111 and 112 -- which can only happen if one real
+-- account was handed a different number on a different day. That splits one
+-- person across several records, and would eventually merge two people when a
+-- released number is handed out again. See docs/roster-identity-repair.md.
+--
+-- The account ID is still recorded, because two things want it and both are
+-- session-scoped, which is what it actually is: the online index, rebuilt on
+-- every call, and matching an incoming Battle.net whisper to a character. It is
+-- no longer anybody's identity.
 function Roster.SyncBNetLinks()
-    local byAccount = {}
+    local byTag = {}
     local linked = 0
 
     local numBN = BNGetNumFriends and BNGetNumFriends() or 0
@@ -955,27 +1019,35 @@ function Roster.SyncBNetLinks()
                     if acct.battleTag and not ns.IsSecret(acct.battleTag) then
                         char.battleTag = acct.battleTag
                     end
-                    local prev = byAccount[acct.bnetAccountID]
-                    if prev and prev ~= guid then
-                        if Roster.LinkCharacters(prev, guid) then linked = linked + 1 end
-                    else
-                        byAccount[acct.bnetAccountID] = guid
+                    local tag = char.battleTag
+                    if tag and not ns.IsSecret(tag) and tag ~= "" then
+                        local prev = byTag[tag]
+                        if prev and prev ~= guid then
+                            if Roster.LinkCharacters(prev, guid, "battletag") then
+                                linked = linked + 1
+                            end
+                        else
+                            byTag[tag] = guid
+                        end
                     end
                 end
             end
         end
     end
 
-    -- Characters we already know the account for still deserve linking, even
-    -- when their owner is offline right now.
+    -- Characters whose tag we already wrote down still deserve linking, even
+    -- when their owner is offline right now. On the tag, for the same reason:
+    -- an account ID from a previous session means nothing today.
     local seen = {}
     for guid, char in pairs(ns.db.characters) do
-        local acct = char.bnetAccountID
-        if acct then
-            if seen[acct] and seen[acct] ~= guid then
-                if Roster.LinkCharacters(seen[acct], guid) then linked = linked + 1 end
+        local tag = char.battleTag
+        if tag and not ns.IsSecret(tag) and tag ~= "" then
+            if seen[tag] and seen[tag] ~= guid then
+                if Roster.LinkCharacters(seen[tag], guid, "battletag") then
+                    linked = linked + 1
+                end
             else
-                seen[acct] = guid
+                seen[tag] = guid
             end
         end
     end

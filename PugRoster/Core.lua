@@ -846,18 +846,39 @@ SlashCmdList.PUGROSTER = function(msg)
             ns.Print(string.format("renamed %d %s to the character you have run "
                 .. "with most.", renamed, renamed == 1 and "person" or "persons"))
         end
-    elseif cmd == "unmerge" then
-        -- Repairs databases damaged by the old link sync, which could stamp one
-        -- account onto a character belonging to another and chain unrelated
-        -- people into a single person.
-        local split, moved = ns.Roster.RebuildPersonsFromAccounts()
-        if split == 0 then
-            ns.Print("no person holds characters from more than one Battle.net "
-                .. "account -- nothing to repair.")
+    elseif cmd == "ungroup" then
+        -- Dry run unless you say confirm. This rearranges the roster, and a
+        -- repair you cannot preview first is a repair you have to trust.
+        local confirm = rest and rest:lower():find("confirm", 1, true)
+        local plan = ns.Roster.UngroupUnverified(confirm and true or false)
+
+        if plan.groups == 0 then
+            ns.Print(string.format("nothing to ungroup. %d grouping%s left standing "
+                .. "(%d you made yourself).", plan.kept, plan.kept == 1 and "" or "s",
+                plan.keptManual))
+        elseif not confirm then
+            ns.Print(string.format("|cffd9a441would ungroup %d person record%s "
+                .. "holding %d characters.|r Keeping %d (%d yours, the rest backed "
+                .. "by a matching BattleTag).",
+                plan.groups, plan.groups == 1 and "" or "s", plan.characters,
+                plan.kept, plan.keptManual))
+            local shown = 0
+            for _, d in ipairs(plan.details) do
+                if shown >= 12 then
+                    ns.Print(string.format("  ...and %d more.", plan.groups - shown))
+                    break
+                end
+                ns.Print(string.format("  %s -- %d characters",
+                    tostring(d.name), d.count))
+                shown = shown + 1
+            end
+            ns.Print("run |cffffff00/pr ungroup confirm|r to apply. "
+                .. "Close the game first if you want a copy of SavedVariables.")
         else
-            ns.Print(string.format("split %d merged %s, regrouping %d characters "
-                .. "by Battle.net account. Manual links were lost with them.",
-                split, split == 1 and "person" or "persons", moved))
+            ns.Print(string.format("ungrouped %d person record%s into %d individual "
+                .. "entries. %d grouping%s kept.",
+                plan.groups, plan.groups == 1 and "" or "s", plan.characters,
+                plan.kept, plan.kept == 1 and "" or "s"))
         end
     elseif cmd == "note" then
         local who, note = rest:match("^(%S+)%s*(.-)$")

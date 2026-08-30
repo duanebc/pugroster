@@ -66,7 +66,9 @@ function Lookup.ApplyLinks()
     for _, pair in ipairs(d.links) do
         local a, b = pair[1], pair[2]
         if a and b and ns.Roster.GetCharacter(a) and ns.Roster.GetCharacter(b) then
-            if ns.Roster.LinkCharacters(a, b) then applied = applied + 1 end
+            -- The companion resolves links from Raider.IO, which knows real
+            -- account identity, so these are as good as a manual link.
+            if ns.Roster.LinkCharacters(a, b, "manual") then applied = applied + 1 end
         end
     end
     return applied

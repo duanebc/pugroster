@@ -637,7 +637,9 @@ local function buildDetail(parent)
         for i = 1, math.min(#cands, LINK_MAX) do
             local cand = cands[i]
             entries[#entries + 1] = { text = personLabel(cand.person), func = function()
-                ns.Roster.LinkCharacters(myChar.guid, cand.char.guid)
+                -- You chose this one, so it is marked as yours and no repair
+                -- will undo it.
+                ns.Roster.LinkCharacters(myChar.guid, cand.char.guid, "manual")
                 -- The filter was for finding this one person; keeping it would
                 -- silently narrow the next link too.
                 state.linkSearch = ""
