@@ -125,11 +125,14 @@ local function nameCell(item)
     -- Only lead with the person name when it is genuinely one of their own
     -- characters. A person created without a name carries a placeholder like
     -- "Person 24", and "Person 24 as Amycus" is worse than plain Amycus.
-    local known = false
+    local known, namedChar = false, nil
     if item.person then
         for guid in pairs(item.person.characters or {}) do
             local c = ns.Roster.GetCharacter(guid)
-            if c and ns.ShortName(c.name) == item.personName then known = true; break end
+            if c and ns.ShortName(c.name) == item.personName then
+                known, namedChar = true, c
+                break
+            end
         end
     end
 
@@ -139,7 +142,12 @@ local function nameCell(item)
     -- Realm is dropped rather than shown twice: the person and the character can
     -- sit on different realms, and both names plus both realms does not fit the
     -- column. The detail pane lists every character in full.
-    return (color and ns.Colorize(item.personName, color) or item.personName)
+    -- Colour the name being drawn, not a different character's. `color` belongs
+    -- to the main character -- the one after the "as" -- so using it here paints
+    -- the person's name in someone else's class: a druid rendered mage blue
+    -- because their mage alt was seen more recently.
+    local personColor = (namedChar and ns.ClassColor(namedChar.classFile)) or color
+    return (personColor and ns.Colorize(item.personName, personColor) or item.personName)
         .. "|cff7f7f7f as " .. short .. "|r"
 end
 

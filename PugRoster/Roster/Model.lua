@@ -308,6 +308,13 @@ function Roster.LinkCharacters(guidA, guidB, linkedBy)
 
     ns.db.persons[merge.id] = nil
     Roster.RefreshDebugFlag(keep)
+
+    -- The surviving person keeps its old name otherwise, which after a link is
+    -- usually the wrong one: you link an alt to the character you actually know
+    -- them by, and the alt happened to be the side that survived. That left the
+    -- roster showing "Enkidu as Sanlanesh" for a person with twelve runs as
+    -- Sanlanesh and three as Enkidu.
+    Roster.RefreshPersonName(keep)
     return true
 end
 
