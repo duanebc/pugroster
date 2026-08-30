@@ -98,23 +98,41 @@ function panel.CurrentFilter() return state.filter end
 
 local TIER_ORDER = { Great = 4, Good = 3, Neutral = 2, Avoid = 1 }
 
--- What the Name column says. It leads with the person, not with whichever
--- character we happened to see most recently: somebody with seven alts is still
--- one person you know by one name, and labelling his row "Nnkidu-Azshara"
--- because that is who he logged in on last leaves him unfindable under the name
--- you actually call him -- which is the opposite of a roster of people.
+-- What the Name column says: one character, the one the rest of the row is
+-- about.
 --
--- When the person and the character agree, which is the common case, this is
--- exactly what it always was: character name with a dimmed realm.
+-- It used to name the person and the character together -- "Enkidu as
+-- Sanlanesh" -- so that somebody with seven alts stayed findable under the name
+-- you call him. That is a real problem, but the Name column is the wrong place
+-- to solve it: every other column in the row describes a single character, so a
+-- second name in front of them makes the row read as being about somebody it is
+-- not. Search solves the findability half (see below), and the detail pane and
+-- the History header carry the grouping, where there is room to say why.
+--
+-- The person is separately named after the character you have run with most
+-- (Roster.RefreshPersonName), so the one name shown is usually the one you know
+-- them by anyway.
 local function nameCell(item)
     local color = item.char and ns.ClassColor(item.char.classFile)
-    local short = ns.ShortName(item.fullName)
 
     -- A search result names the character that matched. Otherwise searching for
     -- somebody by the name you know them by returns a row bearing an alt's name,
     -- which looks exactly like not finding them at all.
     if item.searchHit then
-        local hit = ns.NameWithRealm(item.searchHit, color)
+        -- In the matched character's own colour. `color` is the main
+        -- character's, and using it here paints the alt you searched for in
+        -- somebody else's class.
+        local hitColor = color
+        if item.person then
+            for guid in pairs(item.person.characters or {}) do
+                local c = ns.Roster.GetCharacter(guid)
+                if c and c.name == item.searchHit then
+                    hitColor = ns.ClassColor(c.classFile)
+                    break
+                end
+            end
+        end
+        local hit = ns.NameWithRealm(item.searchHit, hitColor)
         local behind = item.personName
         if behind ~= "" and behind ~= ns.ShortName(item.searchHit) then
             hit = hit .. "|cff7f7f7f  " .. behind .. "|r"
@@ -122,35 +140,13 @@ local function nameCell(item)
         return hit
     end
 
-    -- Only lead with the person name when it is genuinely one of their own
-    -- characters. A person created without a name carries a placeholder like
-    -- "Person 24", and "Person 24 as Amycus" is worse than plain Amycus.
-    local known, namedChar = false, nil
-    if item.person then
-        for guid in pairs(item.person.characters or {}) do
-            local c = ns.Roster.GetCharacter(guid)
-            if c and ns.ShortName(c.name) == item.personName then
-                known, namedChar = true, c
-                break
-            end
-        end
-    end
-
-    if not known or item.personName == "" or item.personName == short then
-        return ns.NameWithRealm(item.fullName, color)
-    end
-    -- Realm is dropped rather than shown twice: the person and the character can
-    -- sit on different realms, and both names plus both realms does not fit the
-    -- column. The detail pane lists every character in full.
-    -- Two characters are named here, so each is coloured as itself. `color`
-    -- belongs to the main character -- the one after the "as" -- and using it
-    -- for both painted a druid in his mage alt's blue; dimming the second to
-    -- grey instead just moved the problem, since the character after the "as"
-    -- is as real as the one before it. Only the joining word stays grey.
-    local personColor = (namedChar and ns.ClassColor(namedChar.classFile)) or color
-    return (personColor and ns.Colorize(item.personName, personColor) or item.personName)
-        .. "|cff7f7f7f as |r"
-        .. (color and ns.Colorize(short, color) or short)
+    -- One name per row. The row's every other column -- role, spec, item level,
+    -- score -- describes one character, so naming a second one beside them made
+    -- the row read as being about somebody it was not: a druid's name in front
+    -- of a mage's numbers. Which characters a person holds, and why they are
+    -- held together, belongs where there is room to say it: the detail pane
+    -- below, and the History header.
+    return ns.NameWithRealm(item.fullName, color)
 end
 
 -- The characters behind a person, deduplicated and ready to draw.

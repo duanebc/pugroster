@@ -435,7 +435,62 @@ local function build(page)
 
         if state.personFilter then
             local person = ns.Roster.GetPerson(state.personFilter)
-            mode:SetText(string.format("runs with |cff9b7fd6%s|r (%d)", person and person.name or "?", #runs))
+            local line = string.format("runs with |cff9b7fd6%s|r (%d)",
+                person and person.name or "?", #runs)
+
+            -- Which characters these runs are pooled from, and on what grounds.
+            -- The roster row names one character now, so this is where a person
+            -- with alts is accounted for -- and "why" matters as much as "who":
+            -- a grouping the client vouched for and one you made by hand are
+            -- different claims, and a run count that silently spans five
+            -- characters is misleading if you cannot see that it does.
+            local names, tag = {}, nil
+            if person then
+                -- Sorted on the plain name and coloured afterwards. Sorting the
+                -- drawn string sorts on the colour escape in front of it, which
+                -- is why the character list elsewhere in this addon carries the
+                -- same warning: the order comes out looking arbitrary.
+                local plain = {}
+                for guid in pairs(person.characters or {}) do
+                    local c = ns.Roster.GetCharacter(guid)
+                    if c and c.name then
+                        plain[#plain + 1] = c
+                        tag = tag or c.battleTag
+                    end
+                end
+                table.sort(plain, function(x, y) return x.name < y.name end)
+                for _, c in ipairs(plain) do
+                    names[#names + 1] = ns.NameWithRealm(c.name,
+                        ns.ClassColor(c.classFile))
+                end
+            end
+
+            if #names > 1 then
+                local why
+                if person.linkedBy == "manual" then
+                    why = "linked by you"
+                elseif person.linkedBy == "battletag" then
+                    why = tag and ("same Battle.net account, " .. tag)
+                        or "same Battle.net account"
+                else
+                    why = "grouped before links recorded a reason"
+                end
+
+                -- One line, because the label sits above the run list and a
+                -- second line would draw over it. Long alt armies are summarised
+                -- rather than allowed to run off the edge; the roster's detail
+                -- pane lists them all.
+                local shown, extra = names, 0
+                if #names > 4 then
+                    shown, extra = { names[1], names[2], names[3], names[4] }, #names - 4
+                end
+                line = line .. string.format("   |cff8a8a95%d characters:|r %s%s"
+                    .. "  |cff7f7f7f(%s)|r",
+                    #names, table.concat(shown, ", "),
+                    extra > 0 and string.format(" |cff7f7f7f+%d|r", extra) or "",
+                    why)
+            end
+            mode:SetText(line)
         else
             mode:SetText(string.format("%d recorded", #runs))
         end
