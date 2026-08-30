@@ -42,11 +42,17 @@ local COLS = {
     { key = "deaths",  label = "deaths",  x = 300, width = 44,  align = "RIGHT" },
     { key = "kicks",   label = "kicks",   x = 346, width = 44,  align = "RIGHT" },
     { key = "disp",    label = "disp",    x = 392, width = 40,  align = "RIGHT" },
-    { key = "def",     label = "def",     x = 434, width = 36,  align = "RIGHT" },
-    { key = "dmg",     label = "dmg",     x = 472, width = 62,  align = "RIGHT" },
-    { key = "dps",     label = "dps",     x = 536, width = 54,  align = "RIGHT" },
-    { key = "heal",    label = "heal",    x = 592, width = 62,  align = "RIGHT" },
-    { key = "hps",     label = "hps",     x = 656, width = 54,  align = "RIGHT" },
+    -- Was "def", a count of defensives pressed. That could never be filled in
+    -- for a key: the aura reads it needs are refused while the challenge-mode
+    -- restriction holds, so the column read 0 for everyone in exactly the
+    -- content it was built for. This is the server's own judgement of damage
+    -- that should not have been taken, and it survives the restriction because
+    -- it arrives through the same meter as damage and interrupts.
+    { key = "avoid",   label = "avoid",   x = 434, width = 46,  align = "RIGHT" },
+    { key = "dmg",     label = "dmg",     x = 482, width = 62,  align = "RIGHT" },
+    { key = "dps",     label = "dps",     x = 546, width = 54,  align = "RIGHT" },
+    { key = "heal",    label = "heal",    x = 602, width = 62,  align = "RIGHT" },
+    { key = "hps",     label = "hps",     x = 666, width = 54,  align = "RIGHT" },
 }
 
 local frame
@@ -164,13 +170,9 @@ function RunSummary.Show(record)
         row.cells.deaths:SetText(tostring(obs.deaths or 0))
         row.cells.kicks:SetText(tostring(obs.interrupts or 0))
         row.cells.disp:SetText(tostring(obs.dispels or 0))
-        -- nil means the run predates defensive capture; 0 means tracked and
-        -- nobody pressed anything. Those are different claims, and so is the
-        -- third case -- the client refused to let us look, which is what a key
-        -- does -- where any number at all would be a lie.
-        row.cells.def:SetText(
-            (not record.defensivesBlocked) and obs.defensives
-            and tostring(obs.defensives) or "-")
+        -- nil is "this run predates the meter", not "none taken" -- a dash
+        -- rather than a zero, the same rule the other counted columns follow.
+        row.cells.avoid:SetText(obs.avoidable and ns.FormatCount(obs.avoidable) or "-")
         row.cells.dmg:SetText(ns.FormatCount(obs.damage))
         row.cells.dps:SetText(ns.FormatCount(ns.PerSecond(obs.damage, record)))
         row.cells.heal:SetText(ns.FormatCount(obs.healing))

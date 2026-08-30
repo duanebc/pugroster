@@ -163,7 +163,8 @@ local function recordFor(totals, serial, name)
     local rec = (serial and totals.bySerial[serial]) or (name and totals.byName[name])
     if not rec then
         rec = { serial = serial, name = name,
-                damage = 0, healing = 0, interrupts = 0, dispels = 0, deaths = 0 }
+                damage = 0, healing = 0, interrupts = 0, dispels = 0, deaths = 0,
+                avoidable = 0 }
         totals.list[#totals.list + 1] = rec
     end
     rec.serial = rec.serial or serial
@@ -559,6 +560,11 @@ local METERS = {
     -- of the code behaves. Four deaths in a session is four entries.
     { field = "deaths", names = { "Deaths", "Death", "PlayerDeaths" },
       count = true, countEntries = true },
+    -- Damage you were not supposed to take: the server's own judgement of what
+    -- was avoidable. This is the one measure of playing badly that survives a
+    -- key, where the aura reads a defensive count needs are refused outright.
+    -- An amount, not a count, so it truncates like damage.
+    { field = "avoidable", names = { "AvoidableDamageTaken", "AvoidableDamage" } },
 }
 
 -- `totalAmount` is the exact figure for every meter: 34688769 damage, or 4
@@ -610,7 +616,8 @@ function Bridge.ServerTotals(preferType)
     local found = false
     local function rec(id)
         out[id] = out[id] or
-            { damage = 0, healing = 0, interrupts = 0, dispels = 0, deaths = 0 }
+            { damage = 0, healing = 0, interrupts = 0, dispels = 0, deaths = 0,
+              avoidable = 0 }
         return out[id]
     end
 
@@ -758,6 +765,7 @@ end
 local REPORTED_METERS = {
     DamageDone = true, HealingDone = true,
     Interrupts = true, Dispels = true, Deaths = true,
+    AvoidableDamageTaken = true,
 }
 
 function Bridge.Report(run, onlyMeter)

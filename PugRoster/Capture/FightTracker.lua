@@ -87,7 +87,7 @@ local function observationFor(record, guid, info)
             role = info and info.role ~= "NONE" and info.role or nil,
             isPlayer = info and info.isPlayer,
             deaths = 0, interrupts = 0, dispels = 0, damage = 0, healing = 0,
-            defensives = 0,
+            avoidable = 0, defensives = 0,
         }
         record.observations[guid] = obs
     end
@@ -100,7 +100,8 @@ end
 local function accumulate(record, segment)
     for guid, seg in pairs(segment.observations) do
         local obs = observationFor(record, guid, seg)
-        for _, field in ipairs({ "damage", "healing", "interrupts", "dispels", "deaths" }) do
+        for _, field in ipairs({ "damage", "healing", "interrupts", "dispels",
+                                 "deaths", "avoidable" }) do
             obs[field] = (obs[field] or 0) + (seg[field] or 0)
         end
     end
@@ -171,6 +172,7 @@ local function closeSegment()
             faction = info.faction,
             isPlayer = info.isPlayer,
             deaths = 0, interrupts = 0, dispels = 0, damage = 0, healing = 0,
+            avoidable = 0,
         }
     end
 
