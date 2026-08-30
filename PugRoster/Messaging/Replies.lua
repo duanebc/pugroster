@@ -88,20 +88,44 @@ function Replies.Inject(personOrName, text)
     return attribute(person, text)
 end
 
+-- nil for anything the client withheld, the value itself otherwise. The same
+-- idea as ns.SafeGUID, which is named for the one type it started with; every
+-- value in a chat event's payload needs it, not just the GUID.
+--
+-- It has to run before the value is used at all. A secret tolerates a truthiness
+-- test and raises on a comparison, so `if senderGUID then` passes and the lookup
+-- underneath it does not -- which is exactly how the Battle.net handler below
+-- shipped broken.
+local function usable(value)
+    if value == nil or ns.IsSecret(value) then return nil end
+    return value
+end
+
 local function onWhisper(text, senderName, _, _, _, _, _, _, _, _, _, senderGUID)
+    local guid, name = usable(senderGUID), usable(senderName)
     local person
-    if senderGUID then person = ns.Roster.PersonForGUID(senderGUID) end
-    if not person and senderName then
-        local char = ns.Roster.FindCharacterByName(senderName)
+    if guid then person = ns.Roster.PersonForGUID(guid) end
+    if not person and name then
+        local char = ns.Roster.FindCharacterByName(name)
         person = char and ns.Roster.GetPerson(char.personId)
     end
     attribute(person, text)
 end
 
+-- Runs on the *receiving* client, which is why this was never seen here: the
+-- sender's client does not fire it. A user reported
+--
+--   Messaging/Replies.lua:104: Attempt to compare local 'bnSenderID'
+--
+-- once per Battle.net whisper they received. Both sides of the comparison are
+-- now checked -- the id from the payload, and the one on each character, since
+-- either can be withheld and it is the comparison that raises, not the read.
 local function onBNetWhisper(text, _, _, _, _, _, _, _, _, _, _, _, bnSenderID)
-    if not bnSenderID then return end
+    local sender = usable(bnSenderID)
+    if not sender then return end
     for _, char in pairs(ns.db.characters) do
-        if char.bnetAccountID == bnSenderID then
+        local id = usable(char.bnetAccountID)
+        if id and id == sender then
             if attribute(ns.Roster.GetPerson(char.personId), text) then return end
         end
     end

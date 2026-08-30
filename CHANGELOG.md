@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.0.7 -- 2026-08-30
+
+- **A Battle.net whisper no longer prints an error at whoever receives it.**
+  `CHAT_MSG_BN_WHISPER` fires on the *receiving* client, so this was invisible
+  from the sending side and had to be reported by a friend:
+  `Replies.lua:104: Attempt to compare local 'bnSenderID'`, once per whisper.
+  The sender id can come back secret, and a secret tolerates a truthiness test
+  while raising on a comparison -- so the `if not bnSenderID` guard above it
+  passed and the comparison underneath it did not. Both sides of that comparison
+  are now checked, and the ordinary whisper handler beside it, which had the same
+  shape on the sender's GUID and name, is checked too.
+
 ## v1.0.6 -- 2026-08-30
 
 - **Player tooltips work again.** Mousing over anybody had silently stopped
