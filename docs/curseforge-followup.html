@@ -1,0 +1,465 @@
+<title>PugRoster Listing Punch List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<style>
+  :root {
+    --ground:      #f6f4f9;
+    --surface:     #ffffff;
+    --surface-alt: #efebf5;
+    --ink:         #241f2e;
+    --ink-soft:    #4a4358;
+    --ink-mute:    #6f6880;
+    --rule:        #ddd6e8;
+    --accent:      #6f3fc4;
+    --accent-soft: #f0e9fb;
+    --flag:        #9a6410;
+    --flag-soft:   #fbf1de;
+    --done:        #2f6b4f;
+    --done-soft:   #e4f1ea;
+    --shadow:      0 1px 2px rgba(36,31,46,.06), 0 6px 18px rgba(36,31,46,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #16121f;
+      --surface:     #1e1929;
+      --surface-alt: #262034;
+      --ink:         #ece8f4;
+      --ink-soft:    #b8b0c8;
+      --ink-mute:    #8b8399;
+      --rule:        #332b45;
+      --accent:      #b394ee;
+      --accent-soft: #2a2140;
+      --flag:        #dfae57;
+      --flag-soft:   #332811;
+      --done:        #7fc9a2;
+      --done-soft:   #17301f;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #16121f;
+    --surface:     #1e1929;
+    --surface-alt: #262034;
+    --ink:         #ece8f4;
+    --ink-soft:    #b8b0c8;
+    --ink-mute:    #8b8399;
+    --rule:        #332b45;
+    --accent:      #b394ee;
+    --accent-soft: #2a2140;
+    --flag:        #dfae57;
+    --flag-soft:   #332811;
+    --done:        #7fc9a2;
+    --done-soft:   #17301f;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.3);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.75rem;
+  }
+
+  /* ---- masthead ---- */
+  header { display: flex; flex-direction: column; gap: .9rem; }
+
+  .eyebrow {
+    font-family: "Archivo", system-ui, sans-serif;
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    font-family: "Archivo", system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(2rem, 5vw, 2.7rem);
+    line-height: 1.08;
+    letter-spacing: -.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .standfirst {
+    margin: 0;
+    font-size: 1.075rem;
+    color: var(--ink-soft);
+    max-width: 34rem;
+  }
+
+  .shipped {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem .75rem;
+    align-items: baseline;
+    padding: .85rem 1rem;
+    background: var(--done-soft);
+    border-left: 3px solid var(--done);
+    border-radius: 0 6px 6px 0;
+    font-size: .93rem;
+    color: var(--ink-soft);
+  }
+  .shipped strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- section ---- */
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: .75rem;
+    padding-bottom: .55rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  h2 {
+    font-family: "Archivo", system-ui, sans-serif;
+    font-size: 1.12rem;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin: 0;
+  }
+  .sec-note {
+    font-size: .87rem;
+    color: var(--ink-mute);
+    margin-left: auto;
+    text-align: right;
+  }
+
+  /* ---- task ---- */
+  .task {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 1.15rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: .7rem;
+    transition: opacity .18s ease;
+  }
+  .task.is-done { opacity: .5; }
+
+  .task-top { display: flex; gap: .8rem; align-items: flex-start; }
+
+  .task input[type="checkbox"] {
+    appearance: none;
+    flex: 0 0 auto;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: .22rem 0 0;
+    border: 1.5px solid var(--ink-mute);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    display: grid;
+    place-content: center;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .task input[type="checkbox"]::after {
+    content: "";
+    width: .58rem;
+    height: .32rem;
+    border-left: 2px solid var(--ground);
+    border-bottom: 2px solid var(--ground);
+    transform: rotate(-45deg) translateY(-1px);
+    opacity: 0;
+  }
+  .task input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .task input[type="checkbox"]:checked::after { opacity: 1; }
+  .task input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .task h3 {
+    font-family: "Archivo", system-ui, sans-serif;
+    font-size: 1.02rem;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1.3;
+  }
+  .task p { margin: 0; color: var(--ink-soft); font-size: .96rem; }
+  .task-body { display: flex; flex-direction: column; gap: .7rem; flex: 1; }
+
+  .chip {
+    font-family: "Archivo", system-ui, sans-serif;
+    font-size: .66rem;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    padding: .18rem .5rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    background: var(--surface-alt);
+    color: var(--ink-mute);
+  }
+  .chip.flag { background: var(--flag-soft); color: var(--flag); }
+
+  /* ---- copyable value ---- */
+  .value {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface-alt);
+  }
+  .value code {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .83rem;
+    padding: .55rem .7rem;
+    flex: 1;
+    overflow-x: auto;
+    white-space: nowrap;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .value button {
+    font-family: "Archivo", system-ui, sans-serif;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    border: 0;
+    border-left: 1px solid var(--rule);
+    background: var(--surface);
+    color: var(--accent);
+    padding: 0 .85rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s ease;
+  }
+  .value button:hover { background: var(--accent-soft); }
+  .value button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  .strike {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: .82rem;
+    color: var(--ink-mute);
+    text-decoration: line-through;
+    text-decoration-color: var(--flag);
+  }
+  .keep {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: .82rem;
+    color: var(--ink);
+  }
+
+  .where {
+    font-family: "Archivo", system-ui, sans-serif;
+    font-size: .8rem;
+    color: var(--ink-mute);
+    display: flex;
+    gap: .4rem;
+    align-items: baseline;
+  }
+  .where b { color: var(--ink-soft); font-weight: 600; }
+
+  /* ---- why-it-matters aside ---- */
+  .why {
+    border-left: 2px solid var(--rule);
+    padding-left: .9rem;
+    font-size: .91rem;
+    color: var(--ink-mute);
+  }
+  .why b { color: var(--ink-soft); font-weight: 600; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    font-size: .87rem;
+    color: var(--ink-mute);
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+  }
+  footer code {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: .82rem;
+    color: var(--ink-soft);
+  }
+  a { color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">PugRoster &middot; CurseForge</div>
+    <h1>Listing punch list</h1>
+    <p class="standfirst">
+      Four things the packager cannot do for you. All of them live on the
+      CurseForge dashboard, and none of them block the addon working.
+    </p>
+    <div class="shipped">
+      <strong>v1.0.6 is live.</strong>
+      <span>Tagged, packaged, and confirmed uploaded to project 1670548 &mdash;
+      <code style="font-family:'JetBrains Mono',monospace;font-size:.82rem">PugRoster-v1.0.6.zip &hellip; Success!</code></span>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head">
+      <h2>Do first</h2>
+      <span class="sec-note">Wrong categories are what a moderator stops on</span>
+    </div>
+
+    <article class="task" data-id="categories">
+      <div class="task-top">
+        <input type="checkbox" aria-labelledby="t-cat">
+        <div class="task-body">
+          <h3 id="t-cat">Fix the categories <span class="chip flag">blocks review</span></h3>
+          <p>Two of the four current categories are simply not what this addon is.</p>
+          <div>
+            <div class="strike">Development Tools&nbsp;&nbsp;&middot;&nbsp;&nbsp;Data Broker</div>
+            <div class="keep">Group Finder&nbsp;&nbsp;&middot;&nbsp;&nbsp;Chat &amp; Communication</div>
+          </div>
+          <p class="why">
+            <b>Group Finder</b> is what the <code>.toc</code> itself declares
+            (<code>X-Category</code>), so the listing currently disagrees with the package.
+            <b>Chat &amp; Communication</b> is defensible alongside it for the whisper side.
+          </p>
+          <div class="where"><b>Where:</b> Settings &rarr; Categories</div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Corrections</h2>
+      <span class="sec-note">The live text says things that are no longer true</span>
+    </div>
+
+    <article class="task" data-id="description">
+      <div class="task-top">
+        <input type="checkbox" aria-labelledby="t-desc">
+        <div class="task-body">
+          <h3 id="t-desc">Paste the updated description</h3>
+          <p>Three statements on the live page are now wrong, not merely out of date.</p>
+          <div class="value">
+            <code>docs/curseforge-description.md</code>
+            <button type="button" data-copy="docs/curseforge-description.md">Copy path</button>
+          </div>
+          <p class="why">
+            It documents <b>/pr unmerge</b>, which no longer exists. It says deaths,
+            interrupts and dispels are unavailable on Midnight &mdash; they come from the
+            server meter now; crowd control is the only one genuinely lost. And it tells
+            readers the Battle.net account ID <b>&ldquo;cannot be mistaken&rdquo;</b>, which is the
+            exact claim the database disproved: that ID is not stable between sessions,
+            and <code>/pr ungroup</code> exists to repair rosters built on it.
+          </p>
+          <div class="where"><b>Where:</b> Settings &rarr; Description &rarr; Markdown tab</div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>Whenever</h2>
+      <span class="sec-note">Nothing depends on these</span>
+    </div>
+
+    <article class="task" data-id="links">
+      <div class="task-top">
+        <input type="checkbox" aria-labelledby="t-links">
+        <div class="task-body">
+          <h3 id="t-links">Set the Source and Issues links</h3>
+          <p>Both are empty. CurseForge renders them as buttons on the public page.</p>
+          <div class="value">
+            <code>https://github.com/duanebc/pugroster</code>
+            <button type="button" data-copy="https://github.com/duanebc/pugroster">Copy</button>
+          </div>
+          <div class="where"><b>Where:</b> Settings &rarr; Links</div>
+        </div>
+      </div>
+    </article>
+
+    <article class="task" data-id="shots">
+      <div class="task-top">
+        <input type="checkbox" aria-labelledby="t-shots">
+        <div class="task-body">
+          <h3 id="t-shots">Add screenshots</h3>
+          <p>
+            One is up &mdash; the Roster tab. The two worth adding next are the ones that
+            show what v1.0.6 actually changed: the <b>run summary window</b> after a key,
+            and the <b>History tab</b> with the group table and the <code>avoid</code> column.
+          </p>
+          <div class="where"><b>Where:</b> Images &rarr; Upload</div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <footer>
+    <div>Dashboard: <a href="https://wow.curseforge.com/projects/1670548">wow.curseforge.com/projects/1670548</a> &middot; the author UI usually redirects to <code>legacy.curseforge.com/project/1670548</code></div>
+    <div>Public page: <a href="https://www.curseforge.com/wow/addons/pugroster">curseforge.com/wow/addons/pugroster</a></div>
+    <div>Longer notes, including what is already done and must not be redone: <code>docs/listing-todo.md</code></div>
+  </footer>
+
+</div>
+
+<script>
+  // Ticks persist per viewer so the list survives a reload mid-task. Storage can
+  // throw outright in a private window or a thumbnailer, so every touch is guarded
+  // and the page renders correctly with nothing stored.
+  var KEY = "pugroster-listing-punchlist";
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {}; }
+    catch (e) { return {}; }
+  }
+  function save(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  var state = load();
+
+  document.querySelectorAll(".task").forEach(function (task) {
+    var id = task.dataset.id;
+    var box = task.querySelector('input[type="checkbox"]');
+    if (state[id]) { box.checked = true; task.classList.add("is-done"); }
+    box.addEventListener("change", function () {
+      task.classList.toggle("is-done", box.checked);
+      state[id] = box.checked;
+      save(state);
+    });
+  });
+
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = btn.dataset.copy;
+      var done = function () {
+        var was = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = was; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+      }
+    });
+  });
+</script>
