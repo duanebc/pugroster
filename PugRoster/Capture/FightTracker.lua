@@ -87,7 +87,7 @@ local function observationFor(record, guid, info)
             role = info and info.role ~= "NONE" and info.role or nil,
             isPlayer = info and info.isPlayer,
             deaths = 0, interrupts = 0, dispels = 0, damage = 0, healing = 0,
-            avoidable = 0, defensives = 0,
+            avoidable = 0,
         }
         record.observations[guid] = obs
     end
@@ -219,21 +219,6 @@ end
 
 function FightTracker.Current() return current end
 
--- The observation for a unit in the visit being recorded, created if it is not
--- there yet.
---
--- Per-pull stats arrive through accumulate() when a segment closes, so a visit
--- has no observations at all until its first pull ends. Anything counted live --
--- a defensive going up during that first pull -- had nowhere to land and was
--- dropped. There is no live segment to credit instead: the segment is built from
--- a fresh snapshot inside closeSegment and does not exist before then.
---
--- accumulate only sums the fields it lists, so an observation created here keeps
--- whatever was counted onto it.
-function FightTracker.EnsureObservation(guid, info)
-    if not current or not guid then return nil end
-    return observationFor(current, guid, info)
-end
 
 -- Inspect results reach a fight the same way they reach a key. Without this a
 -- timewalking or heroic run has no spec and no item level on anybody -- the

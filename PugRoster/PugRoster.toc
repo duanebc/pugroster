@@ -29,7 +29,6 @@ Capture\DetailsBridge.lua
 Capture\RaiderIOBridge.lua
 Capture\Inspect.lua
 Capture\CombatLog.lua
-Capture\Defensives.lua
 Capture\ChatLog.lua
 Capture\RunTracker.lua
 Capture\FightTracker.lua

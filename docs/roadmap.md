@@ -39,8 +39,9 @@ lists the rest (source and issues links, four more screenshots).
 
 ## 4. Defensives, via auras -- open outside keys, closed inside them
 
-> **Superseded 2026-08-29.** The conclusion below ("defensives are countable")
-> holds in normal, heroic and timewalking dungeons and is **false in Mythic+**:
+> **Closed 2026-08-30, capture removed.** The conclusion below ("defensives are
+> countable") holds in normal, heroic and timewalking dungeons and is **false in
+> Mythic+**:
 > the client refuses the aura read outright while the challenge-mode restriction
 > holds. Built, measured, and closed -- see
 > [defensives-in-mythic-plus.md](defensives-in-mythic-plus.md) for the evidence

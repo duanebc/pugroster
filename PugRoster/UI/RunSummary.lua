@@ -42,12 +42,10 @@ local COLS = {
     { key = "deaths",  label = "deaths",  x = 300, width = 44,  align = "RIGHT" },
     { key = "kicks",   label = "kicks",   x = 346, width = 44,  align = "RIGHT" },
     { key = "disp",    label = "disp",    x = 392, width = 40,  align = "RIGHT" },
-    -- Was "def", a count of defensives pressed. That could never be filled in
-    -- for a key: the aura reads it needs are refused while the challenge-mode
-    -- restriction holds, so the column read 0 for everyone in exactly the
-    -- content it was built for. This is the server's own judgement of damage
-    -- that should not have been taken, and it survives the restriction because
-    -- it arrives through the same meter as damage and interrupts.
+    -- The server's own judgement of damage that should not have been taken.
+    -- This replaced a count of defensives pressed, which cannot be filled in for
+    -- a key at all -- see docs/defensives-in-mythic-plus.md. It survives the
+    -- restriction because it arrives through the same meter as damage.
     { key = "avoid",   label = "avoid",   x = 434, width = 46,  align = "RIGHT" },
     { key = "dmg",     label = "dmg",     x = 482, width = 62,  align = "RIGHT" },
     { key = "dps",     label = "dps",     x = 546, width = 54,  align = "RIGHT" },

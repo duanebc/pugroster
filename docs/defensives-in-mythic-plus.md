@@ -1,8 +1,9 @@
 # Why per-player defensive tracking is not possible in Mythic+
 
-**Status:** closed, not fixable from the addon side.
-**Date:** 29 August 2026. Client: Midnight, interface 120000+.
-**Outcome:** the `def` column was replaced by `avoid` (avoidable damage taken).
+**Status:** closed, not fixable from the addon side. Capture removed.
+**Date:** 29-30 August 2026. Client: Midnight, interface 120000+.
+**Outcome:** the `def` column was replaced by `avoid` (avoidable damage taken),
+and `Capture/Defensives.lua` was deleted.
 
 ---
 
@@ -124,25 +125,40 @@ Meter types exposed by `Enum.DamageMeterType` but still unused:
 
 ---
 
-## What still works, and what was kept
+## Why the capture was removed rather than kept for normal dungeons
 
-Aura-based defensive counting **does** work outside keys, and the capture is
-still in place for normal, heroic and timewalking dungeons. Two things guard it:
+Aura-based counting does work outside keys — the Forge of Souls record proves it.
+It was still deleted, for three reasons:
 
-- A **five-second backoff** after a refused read. A refusal stands as long as the
-  restriction holds, and retrying four times a second cost 16,400 failed reads in
-  a single key for no information. Measured on a simulated 23-minute key: 276
-  calls instead of ~16,400, recovering the moment the restriction lifts.
-- A **`defensivesBlocked` flag** on the record. Three different claims can live
-  in that cell — *predates the feature*, *tracked and nobody pressed anything*,
-  and *never allowed to look* — and only one of them is a number. A key was
-  printing the second when it meant the third.
+1. **It cannot serve the case it was built for.** The point was judging people you
+   pug keys with. A number that exists for timewalking and not for Mythic+ answers
+   the wrong question.
+2. **A column that is populated in some content and blank in others is worse than
+   no column.** The reader has to know which restriction was in force to know
+   whether a blank means "nobody pressed anything".
+3. **It was not free.** Registering `UNIT_AURA` put 108,752 events per key through
+   the shared event dispatcher, each one allocating a string for the trace ring —
+   garbage created in combat, which is where a collection is felt as a frame
+   spike. It also flooded the 24-entry trace ring, making it useless for
+   diagnosing anything else during a pull.
 
-One thing is still open: in the timewalking dungeon only the player's own
-defensives were counted; the four groupmates read zero. That is trivial content
-where they may genuinely have pressed nothing, so it does not yet distinguish
-"groupmate auras are readable outside keys" from "only your own ever are". The
-next non-key dungeon with real damage settles it.
+What went: `Capture/Defensives.lua`, the `defensives` field on new observations,
+`FightTracker.EnsureObservation` (it had no other caller), the `/pugdebug
+defstats` command, and the `debugDefStats` / `debugDefUnknown` keys, which are
+cleared from SavedVariables on load. `Debug/DefProbe.lua` was kept — it is
+stripped from released builds, it produced most of the measurements above, and it
+is the tool that would check any future claim about what the client will hand an
+addon.
+
+`obs.defensives` on records written before the removal is left alone. It was
+measured honestly at the time, and rewriting history to erase it would be worse
+than a field nothing reads.
+
+One question is left unanswered and now will stay that way: in the timewalking
+dungeon only the player's own defensives were counted, and the four groupmates
+read zero. That is trivial content where they may genuinely have pressed nothing,
+so it never distinguished "groupmate auras are readable outside keys" from "only
+your own ever are".
 
 ---
 

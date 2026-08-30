@@ -653,6 +653,12 @@ local function initDB()
     -- db.activeRun is left nil unless a key is genuinely in progress; it is the
     -- /reload-safe scratch record RunTracker resumes from.
 
+    -- Left behind by the defensive-aura capture, which was removed once the
+    -- client proved it can never read a groupmate's auras inside a key. Nothing
+    -- writes these any more, so they would otherwise sit in SavedVariables for
+    -- the life of the account. See docs/defensives-in-mythic-plus.md.
+    db.debugDefStats, db.debugDefUnknown = nil, nil
+
     -- The message cooldown used to be expressed in hours, which was far coarser
     -- than the guard needs to be. A value someone actually chose is carried
     -- across as seconds; one that is merely a shipped default is dropped, so an
