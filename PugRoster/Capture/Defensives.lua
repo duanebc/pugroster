@@ -500,7 +500,21 @@ ns.OnInit(function()
         Defensives.Reset()
     end)
 
-    ns.RegisterEvent("UNIT_AURA", function(unit)
+    -- Its own frame, not ns.RegisterEvent -- the same rule Capture/CombatLog.lua
+    -- states for COMBAT_LOG_EVENT_UNFILTERED, and for the same reason.
+    --
+    -- UNIT_AURA fired 108,752 times in one key. Routed through ns.FireEvent that
+    -- is 108,752 handler-list walks, pcalls, and -- worse -- one "event:"..event
+    -- string built and one ns.Trace breadcrumb written per event. The trace ring
+    -- holds twenty-four entries, so it was nothing but UNIT_AURA from the first
+    -- second of a pull, and the garbage was being made in combat, which is where
+    -- a collection is felt as a frame spike.
+    --
+    -- Nothing else is given up: this handler was never on the shared frame for
+    -- any reason but convenience.
+    local auraFrame = CreateFrame("Frame")
+    auraFrame:RegisterEvent("UNIT_AURA")
+    auraFrame:SetScript("OnEvent", function(_, _, unit)
         -- Note the unit and get out. The scan happens on the ticker instead,
         -- because it cannot happen here: 34,340 attempts from inside this
         -- handler read nothing at all, every one refused with
@@ -532,6 +546,7 @@ ns.OnInit(function()
 
         dirty[unit] = true
     end)
+    Defensives.auraFrame = auraFrame
 
     -- One ticker, outside the event dispatch entirely. It coalesces as well as
     -- it escapes: a dungeon fires UNIT_AURA sixty thousand times, and this scans

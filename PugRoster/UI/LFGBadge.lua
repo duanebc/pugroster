@@ -77,20 +77,29 @@ end
 -- called again, so nothing tells our overlays to go away. One throttled sweep
 -- keeps them following their anchor instead of a per-overlay OnUpdate each.
 local function ensureDriver()
-    if driver then return end
+    if driver then driver:Show(); return end
     driver = CreateFrame("Frame")
     local elapsed = 0
-    driver:SetScript("OnUpdate", function(_, dt)
+    driver:SetScript("OnUpdate", function(self, dt)
         elapsed = elapsed + dt
         if elapsed < 0.1 then return end
         elapsed = 0
+        local any = false
         for row, badge in pairs(active) do
             if ns.IsForbidden(row) or not row:IsVisible() then
                 badge:Hide()
                 active[row] = nil
+            else
+                any = true
             end
         end
+        -- Stop once there is nothing to follow. The applicant list only exists
+        -- while you are looking at group finder, and this frame was otherwise
+        -- ticking for the rest of the session -- through every dungeon -- to
+        -- sweep an empty table. decorate() starts it again when it is wanted.
+        if not any then self:Hide() end
     end)
+    driver:Hide()
 end
 
 local function decorate(memberFrame, applicantID, memberIdx)

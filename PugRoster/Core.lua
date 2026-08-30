@@ -181,13 +181,17 @@ end
 local TRACE_SIZE = 24
 local trace, traceAt = {}, 0
 
-function ns.Trace(tag)
+-- Two parts rather than one string, because every event dispatched paid for the
+-- concatenation that joined them. `ns.Trace("event:" .. event)` allocated a
+-- string per event, in combat, where a collection is felt as a frame spike. The
+-- pieces are kept apart and joined only in TraceLog, which a human reads.
+function ns.Trace(tag, detail)
     traceAt = traceAt % TRACE_SIZE + 1
     local slot = trace[traceAt]
     if slot then
-        slot.tag, slot.t = tag, GetTime()
+        slot.tag, slot.detail, slot.t = tag, detail, GetTime()
     else
-        trace[traceAt] = { tag = tag, t = GetTime() }
+        trace[traceAt] = { tag = tag, detail = detail, t = GetTime() }
     end
 end
 
@@ -197,7 +201,11 @@ function ns.TraceLog()
     for i = 0, TRACE_SIZE - 1 do
         local slot = trace[(traceAt - i - 1) % TRACE_SIZE + 1]
         if slot and slot.tag then
-            out[#out + 1] = { tag = slot.tag, ago = now - slot.t }
+            out[#out + 1] = {
+                tag = slot.detail and (slot.tag .. ":" .. tostring(slot.detail))
+                      or slot.tag,
+                ago = now - slot.t,
+            }
         end
     end
     return out
@@ -604,7 +612,7 @@ end
 function ns.FireEvent(event, ...)
     local list = handlers[event]
     if not list then return false end
-    ns.Trace("event:" .. event)
+    ns.Trace("event", event)
     for _, fn in ipairs(list) do
         local ok, err = pcall(fn, ...)
         if not ok then ns.Print("|cffff5555error|r in", event, "handler:", err) end
