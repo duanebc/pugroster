@@ -81,21 +81,6 @@ function panel.ActionsFor(obs)
             ns.Roster.AddFriendByName(name)
         end }
 
-        -- A character friend tells you that character is online; a Battle.net
-        -- friend tells you the account is, whichever character they are on --
-        -- which is the thing worth knowing about someone you want to run with
-        -- again. Offered whether or not they are in the group.
-        --
-        -- Labelled by what will actually happen: with a tag on file the request
-        -- goes straight out, without one this can only open Blizzard's dialog
-        -- for you to paste into, and a menu item should not promise otherwise.
-        if not (person and ns.Roster.IsBNetFriend(person)) then
-            local tag = person and ns.Roster.BattleTagFor(person)
-            entries[#entries + 1] = {
-                text = tag and "Add Battle.net friend" or "Add Battle.net friend...",
-                func = function() ns.Roster.AddBNetFriend(tag, name) end,
-            }
-        end
         entries[#entries + 1] = { text = "Whisper", func = function()
             ns.OpenWhisper(name)
         end }
