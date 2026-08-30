@@ -142,13 +142,15 @@ local function nameCell(item)
     -- Realm is dropped rather than shown twice: the person and the character can
     -- sit on different realms, and both names plus both realms does not fit the
     -- column. The detail pane lists every character in full.
-    -- Colour the name being drawn, not a different character's. `color` belongs
-    -- to the main character -- the one after the "as" -- so using it here paints
-    -- the person's name in someone else's class: a druid rendered mage blue
-    -- because their mage alt was seen more recently.
+    -- Two characters are named here, so each is coloured as itself. `color`
+    -- belongs to the main character -- the one after the "as" -- and using it
+    -- for both painted a druid in his mage alt's blue; dimming the second to
+    -- grey instead just moved the problem, since the character after the "as"
+    -- is as real as the one before it. Only the joining word stays grey.
     local personColor = (namedChar and ns.ClassColor(namedChar.classFile)) or color
     return (personColor and ns.Colorize(item.personName, personColor) or item.personName)
-        .. "|cff7f7f7f as " .. short .. "|r"
+        .. "|cff7f7f7f as |r"
+        .. (color and ns.Colorize(short, color) or short)
 end
 
 -- The characters behind a person, deduplicated and ready to draw.
