@@ -1,18 +1,62 @@
 # Changelog
 
-## v1.0.6 -- unreleased
+## v1.0.6 -- 2026-08-30
 
-- **Defensive cooldowns are counted, per player, per run.** A `def` column in the
-  run summary and the history table. Counted from auras rather than casts,
-  because this client will not say what a groupmate cast -- the spell id comes
-  back withheld, and so does the name if you hand that id back to the API. What
-  *lands* on somebody is legible, and for a defensive cooldown that is the same
-  event a moment later.
-- **Major cooldowns only.** Ironfur appeared 102 times in one key beside
-  Barkskin's 3. Both are defensives, but rotational mitigation and an emergency
-  button are different behaviours, and one number holding both would make every
-  Guardian druid look ten times more careful than a rogue. Personal cooldowns,
-  externals and raid-wides are counted; upkeep is not.
+- **Player tooltips work again.** Mousing over anybody had silently stopped
+  showing their tier, runs together and item level. The unit token this client
+  hands a tooltip is a *secret* value, and passing one to `UnitIsPlayer` raises
+  outright -- on every mouseover, swallowed by the `pcall` that is there so a
+  tooltip can never break. The GUID is taken from the tooltip's own data now and
+  the token is never touched. The swallowed error is also reported once in
+  development builds, because three sessions were spent not seeing it.
+- **A whisper goes to the person you clicked.** After whispering a Battle.net
+  friend, every later whisper from the addon went to them instead. A whisper and
+  a Battle.net whisper keep their targets in two different attributes on the chat
+  box, and setting one without clearing the other leaves the box holding both.
+  Both whisper actions now go through one place that sets the target explicitly
+  and clears the other.
+
+- **`avoid` -- avoidable damage taken -- replaces the `def` column.** Counting
+  defensive cooldowns cannot work in Mythic+ and never could: reading a
+  groupmate's auras is refused while the challenge-mode restriction holds, so the
+  column read zero for all five players in exactly the content it was built for.
+  It was measured four ways before being believed, and the write-up is in
+  `docs/defensives-in-mythic-plus.md`. Avoidable damage comes from the server's
+  own meter -- the one already supplying damage, healing, interrupts and deaths
+  inside keys -- and answers a better question anyway: not "did you press your
+  button" but "did you take damage you should not have".
+- **The defensive-aura capture is gone**, along with the `def` column and the
+  Battle.net friend button, which could not do what it promised either: a
+  Battle.net request needs a BattleTag, and this client gives an addon a
+  BattleTag only for people already on your friends list.
+
+- **People are identified by BattleTag, not by a number that changes.**
+  `bnetAccountID` is not stable between sessions, and it was a person's identity.
+  The proof was in the database it produced: the same character sitting under two
+  adjacent account IDs, which only happens if one real account was handed a
+  different number on a different day. That splits one person across several
+  entries and would eventually merge two people once a number is handed out
+  again. Linking is on the BattleTag now, a merge is refused outright when two
+  known BattleTags disagree, and persons record whether a grouping was yours or
+  the client's.
+- **`/pr ungroup` repairs a roster that guessed.** Dry run unless you type
+  `confirm`. It dissolves every grouping nothing vouches for and keeps those
+  backed by a shared BattleTag or made by you. Runs, item level and tier live on
+  the character, so nothing is lost but the claim that two characters are one
+  person. It replaces `/pr unmerge`, which regrouped by the very number now known
+  to be unreliable.
+
+- **A roster row names one character.** It used to name the person and a
+  character together -- "Enkidu as Sanlanesh" -- so somebody with seven alts
+  stayed findable. Every other column in that row describes a single character,
+  though, so a second name made the row read as being about somebody it was not.
+  Search still names the character that matched, now in that character's own
+  class colour.
+- **History says who a run count is pooled from, and why.** Filtering to a person
+  with alts now shows their characters and the grounds for the grouping -- linked
+  by you, the same Battle.net account, or an honest note that it predates the
+  reason being recorded. A run count spanning five characters is misleading if
+  you cannot see that it does.
 
 - **A window with the group's numbers when a run is recorded.** Five players
   across seven columns is a table, and a table read as scrolling chat text is not
@@ -29,6 +73,13 @@
   because either can be missing -- an old record has no faction, an uninspected
   pug has no spec -- and inside the name cell a missing one shifts that row out
   of line with all the others.
+
+- **Less work per frame in a dungeon.** Watching auras put 108,752 events per key
+  through the shared event dispatcher, each one allocating a string that existed
+  only to be thrown away -- garbage made in combat, which is where collecting it
+  is felt as a stutter. That watcher is gone with the feature; the dispatcher no
+  longer builds a string per event; and the group-finder badge sweep stops
+  running once there is nothing left to follow.
 
 ## v1.0.5 -- 2026-08-29
 
