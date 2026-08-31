@@ -129,6 +129,24 @@ local function drain()
         return
     end
 
+    -- Never in combat. CheckInteractDistance is a protected call there, and a
+    -- protected call from an addon is not a Lua error you can pcall -- it is the
+    -- "PugRoster has been blocked from an action only available to the Blizzard
+    -- UI" popup, once per attempt. The inspect ticker runs every two seconds
+    -- regardless of what is happening, so in a long pull that is a popup every
+    -- two seconds. taint.log recorded 180 of them from this one line.
+    --
+    -- Nothing is lost by waiting: the queue keeps the GUID and drains once
+    -- combat drops, which is also when a groupmate is likely to be standing
+    -- still and in range anyway.
+    if InCombatLockdown and InCombatLockdown() then
+        if not queued[guid] then
+            queued[guid] = true
+            table.insert(queue, guid)
+        end
+        return
+    end
+
     local unit = unitForGUID(guid)
     ns.Trace("inspect:range")
     if not unit or not CanInspect(unit) or not CheckInteractDistance(unit, 1) then

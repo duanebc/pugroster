@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.0.8 -- 2026-08-30
+
+- **No more "PugRoster has been blocked from an action only available to the
+  Blizzard UI" during a pull.** The inspect queue called
+  `CheckInteractDistance`, which is protected in combat, and its ticker runs
+  every two seconds regardless of what is happening -- so a long fight produced
+  that popup every two seconds. A blocked action is not a Lua error and cannot be
+  caught after the fact; the only fix is not to make the call, so inspects now
+  wait for combat to drop. Nothing is lost: the queue keeps its place, and a
+  groupmate is likelier to be in range once the fight is over anyway.
+  `taint.log` had recorded 180 of these from the one line.
+
 ## v1.0.7 -- 2026-08-30
 
 - **A Battle.net whisper no longer prints an error at whoever receives it.**
