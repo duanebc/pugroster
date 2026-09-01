@@ -558,12 +558,17 @@ local METERS = {
     -- meter we cannot name is a column of zeroes with no error to explain it.
     { field = "interrupts", names = { "Interrupts", "Interrupt" },        count = true },
     { field = "dispels",    names = { "Dispels", "Dispel", "Dispells" },  count = true },
-    -- Deaths are counted by entry, not read from a field. The server reports one
-    -- source per death -- carrying deathRecapID and deathTimeSeconds -- and
-    -- leaves totalAmount at 0, so reading the value gives zero however the rest
-    -- of the code behaves. Four deaths in a session is four entries.
+    -- Deaths are counted, not read from a field: the server leaves totalAmount
+    -- at 0 on this meter, so reading the value gives zero however the rest of
+    -- the code behaves.
+    --
+    -- Counted by recap, though, not by row. A death recap lists every damage
+    -- source that contributed to the killing blow, so one death arrives as one
+    -- row per hit that led to it -- a hunter who died once was reported with
+    -- seventeen deaths, which is seventeen hits and one corpse. Each row carries
+    -- the recap it belongs to; counting distinct recaps counts deaths.
     { field = "deaths", names = { "Deaths", "Death", "PlayerDeaths" },
-      count = true, countEntries = true },
+      count = true, countDistinct = { "deathRecapID", "deathTimeSeconds" } },
     -- Damage you were not supposed to take: the server's own judgement of what
     -- was avoidable. This is the one measure of playing badly that survives a
     -- key, where the aura reads a defensive count needs are refused outright.
@@ -618,6 +623,10 @@ function Bridge.ServerTotals(preferType)
     -- an observation can be matched on either.
     local out = { byName = {} }
     local found = false
+
+    -- [record][field][identity] for meters counted by distinct identity rather
+    -- than by row. Scratch: it never leaves this function.
+    local seen = {}
     local function rec(id)
         out[id] = out[id] or
             { damage = 0, healing = 0, interrupts = 0, dispels = 0, deaths = 0,
@@ -668,9 +677,37 @@ function Bridge.ServerTotals(preferType)
                         r.guid, r.name = guid or r.guid, name or r.name
                         if guid and name then out.byName[name] = r end
 
-                        if meter.countEntries then
-                            r[meter.field] = (r[meter.field] or 0) + 1
-                            found = true
+                        if meter.countDistinct then
+                            -- The first identity the row actually carries. A
+                            -- recap id is exact; the timestamp is the fallback,
+                            -- since two deaths cannot share one second.
+                            local id
+                            for _, f in ipairs(meter.countDistinct) do
+                                -- key() drops secrets before anything touches
+                                -- them, which is the same guard the GUID and
+                                -- name go through two lines above.
+                                local v = key(source[f])
+                                if v ~= nil then id = f .. "=" .. tostring(v) break end
+                            end
+
+                            if id then
+                                local perRec = seen[r] or {}
+                                seen[r] = perRec
+                                local perField = perRec[meter.field] or {}
+                                perRec[meter.field] = perField
+                                if not perField[id] then
+                                    perField[id] = true
+                                    r[meter.field] = (r[meter.field] or 0) + 1
+                                    found = true
+                                end
+                            else
+                                -- No identity on the row at all. Counting it is
+                                -- the old behaviour and can overcount, but a
+                                -- death that happened is closer to the truth
+                                -- than one silently dropped.
+                                r[meter.field] = (r[meter.field] or 0) + 1
+                                found = true
+                            end
                         else
                             local v = sourceValue(source, elapsed)
                             if v then
