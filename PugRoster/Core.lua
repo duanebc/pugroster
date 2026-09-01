@@ -655,13 +655,46 @@ end
 
 -- Fire handlers by hand. The debug event simulator uses this so a synthetic run
 -- travels the exact same code path a real key does.
+-- Per-event timing, off unless asked for.
+--
+-- The client's own profiler names the addon and stops there, and "PugRoster is
+-- 89% of the frame time" is a fact you cannot act on. This says which handler.
+-- debugprofilestop() is a millisecond clock that needs no CVar and no reload,
+-- so it can be switched on inside a dungeon and off again after.
+ns.profile = nil        -- { [event] = { calls = n, ms = n } }
+
+function ns.ProfileStart()
+    ns.profile = {}
+    if debugprofilestart then debugprofilestart() end
+end
+
+function ns.ProfileStop()
+    local out = ns.profile
+    ns.profile = nil
+    return out
+end
+
 function ns.FireEvent(event, ...)
     local list = handlers[event]
     if not list then return false end
     ns.Trace("event", event)
+
+    local profile, began = ns.profile, nil
+    if profile and debugprofilestop then began = debugprofilestop() end
+
     for _, fn in ipairs(list) do
         local ok, err = pcall(fn, ...)
         if not ok then ns.Print("|cffff5555error|r in", event, "handler:", err) end
+    end
+
+    if began then
+        local slot = profile[event]
+        if not slot then
+            slot = { calls = 0, ms = 0 }
+            profile[event] = slot
+        end
+        slot.calls = slot.calls + 1
+        slot.ms = slot.ms + (debugprofilestop() - began)
     end
     return true
 end

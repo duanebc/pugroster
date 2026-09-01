@@ -189,6 +189,7 @@ end
 
 local USAGE = {
     "|cff8f5fd6/pugdebug|r commands:",
+    "  |cffffff00profile on|r / |cffffff00profile|r  time this addon's own event handlers",
     "  |cffffff00on|r|off -- master switch; off makes the addon behave as a released build",
     "  |cffffff00run|r [level] [dungeon] [--fail|--disband|--leave|--wipes] -- simulate one full key through the real event pipeline",
     "  |cffffff00seed|r [n] -- bulk-generate n historical runs for rating and decay testing",
@@ -302,6 +303,43 @@ SlashCmdList.PUGDEBUG = function(msg)
 
     elseif cmd == "tier" then
         if args[2] then Debug.TierBreakdown(args[2]) else Debug.Print("usage: /pugdebug tier <name>") end
+    elseif cmd == "profile" then
+        -- Which of this addon's own handlers is spending the time.
+        local sub = (args[2] or ""):lower()
+        if sub == "on" or sub == "start" then
+            ns.ProfileStart()
+            Debug.Print("timing every event handler. Run a pull, then "
+                .. "|cffffff00/pugdebug profile|r.")
+            return
+        end
+
+        local prof = ns.profile
+        if not prof then
+            Debug.Print("not timing. |cffffff00/pugdebug profile on|r first.")
+            return
+        end
+
+        local rows, total = {}, 0
+        for event, slot in pairs(prof) do
+            rows[#rows + 1] = { event = event, calls = slot.calls, ms = slot.ms }
+            total = total + slot.ms
+        end
+        table.sort(rows, function(a, b) return a.ms > b.ms end)
+
+        Debug.Print(("%.0f ms across %d event kinds:"):format(total, #rows))
+        for i, row in ipairs(rows) do
+            if i > 12 then break end
+            Debug.Print(("   %-34s %7.1f ms  %5.1f%%  %5d calls  %6.3f ms each")
+                :format(row.event, row.ms,
+                    total > 0 and (row.ms / total * 100) or 0,
+                    row.calls, row.calls > 0 and (row.ms / row.calls) or 0))
+        end
+
+        -- Kept as well as printed, so it survives being scrolled past.
+        ns.db.lastProfile = { at = time and time() or 0, total = total, rows = rows }
+        Debug.Print("|cff7f7f7fSaved. |cffffff00/reload|r|cff7f7f7f writes it to disk.|r")
+        if sub == "off" or sub == "stop" then ns.ProfileStop() end
+
 
     elseif cmd == "export" then
         Debug.ExportState()
