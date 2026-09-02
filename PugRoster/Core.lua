@@ -584,10 +584,44 @@ end
 -- spent running between packs are not minutes anyone was doing damage in.
 -- Records captured before combat time was tracked fall back to elapsed, which
 -- understates a key and is exactly right for a fight.
+-- The smallest share of a run's wall clock its recorded combat time can
+-- plausibly be.
+--
+-- Across a hundred stored runs this sits between 0.68 and 0.95, median 0.86.
+-- One recorded 0.35: it was abandoned and re-formed, so the segments banked
+-- covered eleven minutes of a thirty-three minute run while the server meter's
+-- totals still covered all of it. Dividing the second by the first inflated
+-- every rate on that record by nearly three times -- which is how a healer came
+-- to hold the all-time record at 214k, in a run nobody finished.
+local MIN_COMBAT_SHARE = 0.5
+
+-- Seconds to divide a total by, and whether that had to be estimated.
+function ns.CombatSeconds(record)
+    if not record then return 0, false end
+    local combat = tonumber(record.combatTime) or 0
+    local elapsed = tonumber(record.elapsed) or 0
+
+    if combat > 0 and elapsed > 0 and (combat / elapsed) < MIN_COMBAT_SHARE then
+        -- Wall clock understates a rate, because it counts the running between
+        -- packs as though it were fighting. Understating is the safe direction:
+        -- the alternative is presenting a number three times too large as
+        -- somebody's personal best.
+        return elapsed, true
+    end
+    if combat > 0 then return combat, false end
+    return elapsed, false
+end
+
+-- Whether a record's rates rest on wall clock rather than measured combat.
+function ns.RatesAreEstimated(record)
+    local _, estimated = ns.CombatSeconds(record)
+    return estimated
+end
+
 function ns.PerSecond(amount, record)
     amount = tonumber(amount) or 0
     if amount <= 0 or not record then return 0 end
-    local seconds = tonumber(record.combatTime) or tonumber(record.elapsed) or 0
+    local seconds = ns.CombatSeconds(record)
     if seconds <= 0 then return 0 end
     return amount / seconds
 end

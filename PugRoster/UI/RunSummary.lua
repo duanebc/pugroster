@@ -172,9 +172,10 @@ function RunSummary.Show(record)
         -- rather than a zero, the same rule the other counted columns follow.
         row.cells.avoid:SetText(obs.avoidable and ns.FormatCount(obs.avoidable) or "-")
         row.cells.dmg:SetText(ns.FormatCount(obs.damage))
-        row.cells.dps:SetText(ns.FormatCount(ns.PerSecond(obs.damage, record)))
+        local rateMark = ns.RatesAreEstimated(record) and "~" or ""
+        row.cells.dps:SetText(rateMark .. ns.FormatCount(ns.PerSecond(obs.damage, record)))
         row.cells.heal:SetText(ns.FormatCount(obs.healing))
-        row.cells.hps:SetText(ns.FormatCount(ns.PerSecond(obs.healing, record)))
+        row.cells.hps:SetText(rateMark .. ns.FormatCount(ns.PerSecond(obs.healing, record)))
         row:Show()
     end
     for i = #list + 1, #f.rows do f.rows[i]:Hide() end

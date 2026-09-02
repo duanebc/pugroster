@@ -347,9 +347,13 @@ local function build(page)
         -- nil is "this run predates the meter", not "none taken".
         row.cells.avoid:SetText(obs.avoidable and short(obs.avoidable) or "-")
         row.cells.dmg:SetText(short(obs.damage))
-        row.cells.dps:SetText(short(ns.PerSecond(obs.damage, shownRecord)))
+        -- A tilde where the run's combat time was too small to believe and wall
+        -- clock had to stand in. The totals are real; what they are divided by
+        -- is not, and a rate you cannot compare should not look like one you can.
+        local rateMark = ns.RatesAreEstimated(shownRecord) and "~" or ""
+        row.cells.dps:SetText(rateMark .. short(ns.PerSecond(obs.damage, shownRecord)))
         row.cells.heal:SetText(short(obs.healing))
-        row.cells.hps:SetText(short(ns.PerSecond(obs.healing, shownRecord)))
+        row.cells.hps:SetText(rateMark .. short(ns.PerSecond(obs.healing, shownRecord)))
         row.cells.flag:SetText(obs.leftEarly and "|cffff6666left|r" or (obs.isPlayer and "|cff8f5fd6you|r" or ""))
     end)
     groupList:SetParent(detail)

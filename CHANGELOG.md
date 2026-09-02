@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.0.10 -- 2026-09-02
+
+- **A rate is no longer divided by a combat time too small to believe.** Every
+  dps and hps figure is a total divided by the run's recorded combat time, and
+  one run in a hundred recorded 707 seconds of combat across a 2,012 second run
+  -- it was abandoned and re-formed, so the segments banked covered eleven
+  minutes of a thirty-three minute run while the server meter's totals still
+  covered all of it. Everything on that record read nearly three times too high,
+  and a healer held the all-time best at 214k in a run nobody finished. The
+  honest figure is 75k.
+
+  Across the other hundred runs the ratio sits between 0.68 and 0.95, so
+  anything under half now falls back to wall clock. That understates a rate,
+  since wall clock counts the running between packs -- which is the safe
+  direction to be wrong in.
+
+- **Those rates are marked with a `~`.** The totals are real; what they were
+  divided by is not, and a number you cannot compare should not look like one
+  you can.
+
 ## v1.0.9 -- 2026-09-01
 
 - **The frame drops in Mythic+ were this addon, and they are gone.** Measured
