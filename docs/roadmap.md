@@ -103,6 +103,62 @@ already there. See `docs/defensive-probe.html` for the evidence.
   over from before creature GUIDs were guarded out.
 - **`Sender.SendTo` has no callers.** Either wire it up or delete it.
 
+## 7. Roster growth: bound the count, not just the bytes
+
+**Open. Raised 2026-09-01, after the friends-list sync turned out to be the
+Mythic+ frame drops.**
+
+`Housekeeping.lua` caps the database at 5 MB and sheds captured chat, then old
+records, when it goes over. On this account it has never fired: the file is
+1.27 MB. Housekeeping was watching the wrong axis.
+
+What actually bit was **count**. The roster holds **1,087 characters**, and two
+friend-list passes walked all of them on every `BN_FRIEND_INFO_CHANGED` -- 28.9 ms
+a call, twenty-nine calls inside one pull. Nothing was near a size limit, and
+nothing a byte budget does would have prevented it. Bytes are a disk and
+login-time concern; count is a per-event cost, and they are not the same problem.
+
+That is worth confronting now rather than after the next report, because the
+roster is on the "never shed" list in `Housekeeping.lua` and therefore grows
+without bound, and because the growth is not mostly runs:
+
+| | count |
+|---|---|
+| characters stored | 1,087 |
+| of those, from the friend list | 605 |
+| with a battletag recorded | 272 |
+| runs recorded | 180 |
+
+**605 of 1,087 came from the friends list**, not from anyone you have run with.
+They are stubs created so a name resolves; most will never appear in a record.
+About six new characters arrive per run, so this grows steadily for anyone who
+pugs, and every account eventually reaches the size where an O(n) scan per event
+becomes a frame drop. This account got there first because it has the history.
+
+The indexing fix removed the immediate cost, so nothing here is urgent. The
+question is whether unbounded growth is acceptable at all, and it splits three
+ways:
+
+- **Leave it and keep indexing.** The data is small in bytes and the roster is
+  the point of the addon. Every hot path must then be index-first, and the next
+  linear scan someone adds reintroduces the bug quietly. That is a standing
+  discipline rather than a fix.
+- **Retire stubs.** A `fromFriendList` character with no record, not seen in
+  N months, is a name that resolved once. Dropping those halves the roster today
+  and touches nothing anyone has run with. Needs a `lastSeen` that is actually
+  maintained on stubs, which should be checked before relying on it.
+- **Roll over the file.** Split history from roster so the working set stays
+  small, or archive records past a cutoff into a second saved variable loaded on
+  demand. The most work by a distance, and only worth it if bytes become a real
+  problem -- at 1.27 MB against a 5 MB budget they are not.
+
+The middle one looks right, but this is a question rather than a plan: it decides
+what the addon promises about people you met once, and that is not a decision to
+take from a profiler reading.
+
+Worth doing either way: a `/pugdebug size` that reports counts alongside bytes.
+The byte budget was measured and reported all along; nobody was counting rows.
+
 ## Not yet: the Python companion
 
 The largest missing piece on paper -- it would resolve alts for players who are
