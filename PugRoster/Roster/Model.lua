@@ -87,17 +87,40 @@ end
 
 -- Best-effort name lookup. Accepts "Name" or "Name-Realm"; a bare name matches
 -- the most recently seen character with that name.
-function Roster.FindCharacterByName(name)
-    if not name or name == "" then return nil end
-    local lower = name:lower()
-    local best
-    for guid, char in pairs(ns.db.characters) do
-        local full = (char.name or ""):lower()
-        if full == lower or ns.ShortName(full) == lower then
-            if not best or (char.lastSeen or 0) > (best.lastSeen or 0) then best = char end
+-- Every character keyed by name, built in one pass.
+--
+-- The scan this replaces walked all of them for each name asked about, lowering
+-- and shortening every one on the way. With eleven hundred characters and fifty
+-- friends that is fifty-four thousand iterations and a hundred thousand string
+-- operations per friend-list event -- which measured at 29 ms a call, twice over
+-- a frame's worth of budget, twenty-nine times in a single pull.
+--
+-- Full name and short name both point at the same record, most recently seen
+-- winning, which is exactly what the old scan decided the long way round.
+function Roster.NameIndex()
+    local index = {}
+    local function offer(key, char)
+        if not key or key == "" then return end
+        local prev = index[key]
+        if not prev or (char.lastSeen or 0) > (prev.lastSeen or 0) then
+            index[key] = char
         end
     end
-    return best
+    for _, char in pairs(ns.db.characters) do
+        local full = (char.name or ""):lower()
+        if full ~= "" then
+            offer(full, char)
+            offer(ns.ShortName(full), char)
+        end
+    end
+    return index
+end
+
+-- `index` is optional: pass one from Roster.NameIndex() when asking about many
+-- names at once, and it is built for you when asking about a single one.
+function Roster.FindCharacterByName(name, index)
+    if not name or name == "" then return nil end
+    return (index or Roster.NameIndex())[name:lower()]
 end
 
 --------------------------------------------------------------------------------
@@ -625,9 +648,12 @@ end
 function Roster.ImportFriends()
     local imported = 0
 
+    -- One index for the whole import rather than a fresh scan per friend.
+    local index = Roster.NameIndex()
+
     local function take(fullName, extra)
         if not fullName or fullName == "" then return end
-        local existing = Roster.FindCharacterByName(fullName)
+        local existing = Roster.FindCharacterByName(fullName, index)
         local guid = existing and existing.guid
 
         -- Without a GUID there is nothing to key a character on, so a friend we
@@ -947,6 +973,22 @@ function Roster.SyncBNetLinks()
     local byTag = {}
     local linked = 0
 
+    -- Characters keyed by the exact name the friends list would give, built
+    -- once. A list rather than a single record, because two characters can
+    -- carry the same name and both deserve considering.
+    local byExactName = {}
+    for guid, char in pairs(ns.db.characters) do
+        local name = char.name
+        if name and name ~= "" then
+            local bucket = byExactName[name]
+            if not bucket then
+                bucket = {}
+                byExactName[name] = bucket
+            end
+            bucket[#bucket + 1] = { guid = guid, char = char }
+        end
+    end
+
     local numBN = BNGetNumFriends and BNGetNumFriends() or 0
     for i = 1, numBN do
         local acct = C_BattleNet and C_BattleNet.GetFriendAccountInfo(i)
@@ -960,17 +1002,18 @@ function Roster.SyncBNetLinks()
             local realm = game.realmName and game.realmName:gsub("%s+", "")
             local full = (realm and realm ~= "")
                 and ns.FullName(game.characterName, realm) or nil
-            for guid, char in pairs(ns.db.characters) do
-                -- `full` can be nil when a name is withheld, and `char.name` can
-                -- be nil on a stub; nil == nil would then match every one of them
-                -- at once and merge the lot.
-                if full and char.name == full
-                    -- Never reassign a character that already belongs to another
-                    -- account. Two accounts claiming one name is a collision, not
-                    -- a correction, and overwriting is how unrelated people ended
-                    -- up merged into a single person.
-                    and (char.bnetAccountID == nil
-                         or char.bnetAccountID == acct.bnetAccountID) then
+            -- `full` can be nil when a name is withheld. The old form compared
+            -- it against every character's name, and nil == nil would match
+            -- every stub at once and merge the lot; looking it up instead means
+            -- a nil name simply finds nothing.
+            for _, hit in ipairs(full and byExactName[full] or {}) do
+                local guid, char = hit.guid, hit.char
+                -- Never reassign a character that already belongs to another
+                -- account. Two accounts claiming one name is a collision, not a
+                -- correction, and overwriting is how unrelated people ended up
+                -- merged into a single person.
+                if char.bnetAccountID == nil
+                    or char.bnetAccountID == acct.bnetAccountID then
                     char.bnetAccountID = acct.bnetAccountID
                     -- Written down whenever the client offers one, because it
                     -- is the identity everything else now rests on, and it is
@@ -1016,11 +1059,61 @@ function Roster.SyncBNetLinks()
     return linked
 end
 
+--------------------------------------------------------------------------------
+-- Friend list: expensive, and not urgent
+--------------------------------------------------------------------------------
+
+-- Both passes walk every character on the roster. Indexed they are far cheaper
+-- than they were, but they are still the two most expensive things this addon
+-- does, and BN_FRIEND_INFO_CHANGED fires every time anybody on your list logs
+-- in, logs out, zones or changes game. Twenty-nine of those landed inside one
+-- Mythic+ pull.
+--
+-- Nothing here is time-critical. Who is online is worth knowing when you look at
+-- the roster, and worth nothing at all in the middle of a fight, so it is
+-- refreshed on a quarter-hour at most, never in combat, and immediately when the
+-- window is actually opened.
+local FRIEND_REFRESH_GAP = 15 * 60
+local lastFriendSync, friendsDirty = 0, false
+
+function Roster.FriendsAreStale()
+    return (GetTime() - lastFriendSync) >= FRIEND_REFRESH_GAP
+end
+
+-- `force` is for the moment somebody opens the roster and expects to be looking
+-- at the truth.
+function Roster.RefreshFriends(force)
+    if InCombatLockdown and InCombatLockdown() then
+        friendsDirty = true
+        return false
+    end
+    if not force and not (friendsDirty and Roster.FriendsAreStale()) then
+        return false
+    end
+
+    lastFriendSync = GetTime()
+    friendsDirty = false
+    Roster.ImportFriends()
+    Roster.SyncBNetLinks()
+    return true
+end
+
 ns.OnInit(function()
-    -- Friends-list data is only meaningful once we are in the world, and the
-    -- account mapping is online-only, so re-sync opportunistically.
-    ns.RegisterEvent("BN_FRIEND_INFO_CHANGED", function() Roster.SyncBNetLinks() end)
-    ns.RegisterEvent("FRIENDLIST_UPDATE", function() Roster.SyncBNetLinks() end)
+    -- The events only mark the cache dirty now. Doing the work here is what
+    -- cost 29 ms a time, twenty-nine times, in a single pull.
+    local function markDirty() friendsDirty = true end
+    ns.RegisterEvent("BN_FRIEND_INFO_CHANGED", markDirty)
+    ns.RegisterEvent("FRIENDLIST_UPDATE", markDirty)
+
+    -- Leaving combat is a good moment to catch up, if it is due.
+    ns.RegisterEvent("PLAYER_REGEN_ENABLED", function() Roster.RefreshFriends() end)
+
+    -- And a slow sweep so a quiet session still catches up eventually. A minute
+    -- apart, and it does nothing at all unless the cache is both dirty and past
+    -- its quarter-hour.
+    if C_Timer and C_Timer.NewTicker then
+        C_Timer.NewTicker(60, function() Roster.RefreshFriends() end)
+    end
 end)
 
 ns.OnInit(function()
@@ -1030,8 +1123,9 @@ ns.OnInit(function()
     ns.RegisterEvent("PLAYER_ENTERING_WORLD", function()
         Roster.MarkSelf()
         Roster.RefreshInstanceNames()
-        Roster.ImportFriends()
+        Roster.RefreshFriends(true)
     end)
-    ns.RegisterEvent("FRIENDLIST_UPDATE", Roster.ImportFriends)
-    ns.RegisterEvent("BN_FRIEND_INFO_CHANGED", Roster.ImportFriends)
+    -- Import is on the same cache as the link sync: both walk the roster, and
+    -- both were registered on the same two events, so the pull paid for it
+    -- twice over.
 end)

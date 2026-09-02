@@ -690,6 +690,11 @@ local function buildWindow()
 end
 
 function UI.Show(tabName)
+    -- Opening the roster is the one moment online status is actually being
+    -- looked at, so it is refreshed here rather than kept warm all the time.
+    if ns.Roster and ns.Roster.RefreshFriends then
+        pcall(ns.Roster.RefreshFriends, true)
+    end
     buildWindow()
     frame:Show()
 
