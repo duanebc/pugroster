@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.0.9 -- 2026-09-01
+
+- **The frame drops in Mythic+ were this addon, and they are gone.** Measured
+  rather than guessed: the client's own profiler put PugRoster at 447 ms of the
+  501 ms spent by every addon across a single pull -- 89% of it, against 24 ms
+  for Details and 4 for DBM. Its own per-event timing then named the handler.
+  `BN_FRIEND_INFO_CHANGED` was costing **28.9 ms a call, 29 times in one pull**;
+  a frame at 60fps is 16.7 ms, so each one dropped nearly two.
+
+  Two handlers sat on that event and both walked the whole roster. With 1,087
+  characters stored and fifty friends, one compared every character against
+  every friend while the other looked up each friend with a full scan that
+  lowercased and shortened all 1,087 names.
+
+  Nothing there is time-critical -- who is online matters when you look at the
+  roster and not at all mid-pull -- so both are now behind a fifteen-minute
+  cache that never runs in combat and refreshes the moment the window opens.
+  The lookup is indexed rather than scanned. Same event, same run: **0.0021 ms a
+  call.**
+
+- **Deaths are counted by recap rather than by row.** A hunter who died once was
+  filed with seventeen deaths. A death recap lists every damage source that
+  contributed to the killing blow, and each was being counted as a death. Runs
+  already recorded keep their numbers; *Pull from Details* re-reads one.
+
+- **A latent merge bug went with the rewrite.** The old friend-matching compared
+  a withheld name against every character with `nil == nil`, which matched every
+  stub at once.
+
+- `/pugdebug profile on` times this addon's own event handlers, in case it is
+  ever the suspect again.
+
 ## v1.0.8 -- 2026-08-30
 
 - **No more "PugRoster has been blocked from an action only available to the
