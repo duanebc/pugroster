@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.0.11 -- 2026-09-03
+
+- **Deaths are counted by when they happened, not by what the rows are labelled
+  with.** A run where everyone died once filed one player with twelve. The
+  server's Deaths meter lists every damage source that contributed to a killing
+  blow, so one death arrives as several rows -- and counting distinct
+  `deathRecapID` values, which fixed an earlier "seventeen deaths" report, turns
+  out not to hold: those twelve rows carried twelve different ids.
+
+  A death is a moment. The hits that caused it land within seconds of each other
+  and two real deaths are separated by far more, so the timestamps are clustered
+  instead and the id no longer decides anything. Ten seconds apart is the
+  boundary. Where the server sends no timestamps at all, distinct ids are the
+  next guess and the row count the last.
+
+- `/pugdebug details deaths` now prints every row of the named meter with its
+  recap id and timestamp, which is what settled this one.
+
 ## v1.0.10 -- 2026-09-02
 
 - **A rate is no longer divided by a combat time too small to believe.** Every

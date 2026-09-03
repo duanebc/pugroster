@@ -562,13 +562,21 @@ local METERS = {
     -- at 0 on this meter, so reading the value gives zero however the rest of
     -- the code behaves.
     --
-    -- Counted by recap, though, not by row. A death recap lists every damage
-    -- source that contributed to the killing blow, so one death arrives as one
-    -- row per hit that led to it -- a hunter who died once was reported with
-    -- seventeen deaths, which is seventeen hits and one corpse. Each row carries
-    -- the recap it belongs to; counting distinct recaps counts deaths.
+    -- Counted by *when*, not by row and not by recap id.
+    --
+    -- A death recap lists every damage source that contributed to the killing
+    -- blow, so one death arrives as one row per hit -- a hunter who died once
+    -- was filed with seventeen. Counting distinct recap ids fixed most of that
+    -- and then a DPS who died once came back as twelve, because the id is not
+    -- shared across a recap's rows as reliably as assumed.
+    --
+    -- So the id is not what decides. A death is a moment: the hits that caused
+    -- it land within seconds of each other, and two real deaths are separated
+    -- by far more than that. Clustering the timestamps counts corpses without
+    -- depending on what any id field means, which is the part that has now been
+    -- guessed wrong twice.
     { field = "deaths", names = { "Deaths", "Death", "PlayerDeaths" },
-      count = true, countDistinct = { "deathRecapID", "deathTimeSeconds" } },
+      count = true, cluster = { time = "deathTimeSeconds", id = "deathRecapID" } },
     -- Damage you were not supposed to take: the server's own judgement of what
     -- was avoidable. This is the one measure of playing badly that survives a
     -- key, where the aura reads a defensive count needs are refused outright.
@@ -624,9 +632,10 @@ function Bridge.ServerTotals(preferType)
     local out = { byName = {} }
     local found = false
 
-    -- [record][field][identity] for meters counted by distinct identity rather
-    -- than by row. Scratch: it never leaves this function.
-    local seen = {}
+    -- [record] -> { times, ids, rows } for the deaths meter, whose rows describe
+    -- one death between them rather than one each. Scratch: it never leaves this
+    -- function.
+    local clustered = {}
     local function rec(id)
         out[id] = out[id] or
             { damage = 0, healing = 0, interrupts = 0, dispels = 0, deaths = 0,
@@ -677,37 +686,23 @@ function Bridge.ServerTotals(preferType)
                         r.guid, r.name = guid or r.guid, name or r.name
                         if guid and name then out.byName[name] = r end
 
-                        if meter.countDistinct then
-                            -- The first identity the row actually carries. A
-                            -- recap id is exact; the timestamp is the fallback,
-                            -- since two deaths cannot share one second.
-                            local id
-                            for _, f in ipairs(meter.countDistinct) do
-                                -- key() drops secrets before anything touches
-                                -- them, which is the same guard the GUID and
-                                -- name go through two lines above.
-                                local v = key(source[f])
-                                if v ~= nil then id = f .. "=" .. tostring(v) break end
+                        if meter.cluster then
+                            -- Gathered now, counted once every row is in: a
+                            -- cluster cannot be recognised one row at a time.
+                            local bucket = clustered[r]
+                            if not bucket then
+                                bucket = { times = {}, ids = {}, rows = 0 }
+                                clustered[r] = bucket
                             end
+                            bucket.rows = bucket.rows + 1
+                            found = true
 
-                            if id then
-                                local perRec = seen[r] or {}
-                                seen[r] = perRec
-                                local perField = perRec[meter.field] or {}
-                                perRec[meter.field] = perField
-                                if not perField[id] then
-                                    perField[id] = true
-                                    r[meter.field] = (r[meter.field] or 0) + 1
-                                    found = true
-                                end
-                            else
-                                -- No identity on the row at all. Counting it is
-                                -- the old behaviour and can overcount, but a
-                                -- death that happened is closer to the truth
-                                -- than one silently dropped.
-                                r[meter.field] = (r[meter.field] or 0) + 1
-                                found = true
-                            end
+                            -- key() drops secrets before anything touches them,
+                            -- the same guard the GUID and name go through above.
+                            local at = tonumber(key(source[meter.cluster.time]))
+                            if at then bucket.times[#bucket.times + 1] = at end
+                            local id = key(source[meter.cluster.id])
+                            if id ~= nil then bucket.ids[tostring(id)] = true end
                         else
                             local v = sourceValue(source, elapsed)
                             if v then
@@ -720,6 +715,35 @@ function Bridge.ServerTotals(preferType)
                 end
             end
         end
+    end
+
+    -- Corpses, from the timestamps gathered above.
+    --
+    -- Two hits within the gap belong to the same death; anything further apart
+    -- is another one. Ten seconds is far longer than a killing blow's worth of
+    -- damage and far shorter than the time between two deaths in any run worth
+    -- recording.
+    local DEATH_GAP = 10
+
+    for record, bucket in pairs(clustered) do
+        local deaths
+        if #bucket.times > 0 then
+            table.sort(bucket.times)
+            deaths = 1
+            for i = 2, #bucket.times do
+                if (bucket.times[i] - bucket.times[i - 1]) > DEATH_GAP then
+                    deaths = deaths + 1
+                end
+            end
+        else
+            -- No timestamps at all. Distinct recap ids are the next best guess,
+            -- and the row count is the last -- which can overcount, but a death
+            -- that happened is closer to the truth than one silently dropped.
+            local ids = 0
+            for _ in pairs(bucket.ids) do ids = ids + 1 end
+            deaths = (ids > 0) and ids or bucket.rows
+        end
+        record.deaths = deaths
     end
 
     if not found then
@@ -850,6 +874,29 @@ function Bridge.Report(run, onlyMeter)
                     end
                     table.sort(parts)
                     line("     source fields: %s", table.concat(parts, "  "))
+                end
+
+                -- Every row, when a meter was named.
+                --
+                -- One player was filed with twelve deaths on a run where
+                -- everyone died once, and the first source alone cannot say
+                -- why: the question is whether the rows share a recap id, and
+                -- that needs all of them side by side. Only on request, because
+                -- a raid's damage meter would be hundreds of lines.
+                if onlyMeter then
+                    for i = 1, math.min(sources, 40) do
+                        local src = sess.combatSources[i]
+                        if type(src) == "table" then
+                            line("       %2d  %-24s recap=%-10s at=%-10s total=%s",
+                                i, describe(src.name),
+                                describe(src.deathRecapID),
+                                describe(src.deathTimeSeconds),
+                                describe(src.totalAmount))
+                        end
+                    end
+                    if sources > 40 then
+                        line("       ... %d more rows", sources - 40)
+                    end
                 end
             end
             end
